@@ -1,67 +1,78 @@
 # Virtual Hern
 
-Aplicativo de checkout em **Python + PySide6 + QtWebEngine** para abrir o e-commerce Hernandes em modo kiosk no Windows, com teclado virtual touch pensado para monitor vertical.
+Checkout touch da Hernandes para Windows, desenvolvido em Python com PySide6 + QtWebEngine e pensado para monitor vertical.
 
-## Principais recursos
+## Entrega final
 
-- Abre https://www.grupohernandes.com.br/ em Chromium embutido.
-- Modo tela cheia para checkout.
-- Mantém cookies, local storage e sessão entre reinícios.
-- Detecta automaticamente campos digitáveis.
-- Teclado sobe e desce com animação, redimensionando o site sem cobrir o conteúdo.
-- Layouts de teclado para texto, e-mail e números.
-- Pensado para tela vertical / portrait.
-- Atalho administrativo: `Ctrl + Shift + F12`.
-- `F5` recarrega o e-commerce.
+O projeto gera **um único arquivo executável**:
 
-## Testar no Windows
-
-1. Instale Python 3.11 ou 3.12 64 bits.
-2. Marque **Add python.exe to PATH** durante a instalação.
-3. Execute `run_windows_test.bat`.
-
-## Executar em tela cheia
-
-Execute:
-
-```bat
-run_windows.bat
+```text
+dist\HernandesCheckout.exe
 ```
 
-## Gerar o EXE
+O cliente não precisa levar `config.json`, JavaScript, DLLs ou outras pastas ao lado do programa. Os recursos necessários são empacotados dentro do EXE.
 
-Execute:
+## Funcionamento
+
+- Abre https://www.grupohernandes.com.br/ em Chromium embutido.
+- Opera em tela cheia no modo checkout.
+- Mantém cookies, local storage e sessão entre reinícios.
+- Detecta automaticamente quando um campo precisa de digitação.
+- O teclado sobe e desce suavemente.
+- O e-commerce redimensiona em vez de ficar escondido atrás do teclado.
+- Teclado específico para texto, e-mail e números.
+- Interface otimizada para tela vertical.
+- `F5` recarrega o e-commerce.
+- `Ctrl + Shift + F12` encerra o modo kiosk.
+
+## Estrutura
+
+```text
+virtual-Hern/
+├── src/
+│   ├── main.py
+│   ├── browser.py
+│   ├── keyboard.py
+│   ├── app_config.py
+│   └── resources/
+│       └── keyboard_bridge.js
+├── build_windows.bat
+├── requirements.txt
+├── .gitignore
+└── README.md
+```
+
+Os arquivos em `src/` existem apenas para desenvolvimento. Depois do build, a distribuição é somente `HernandesCheckout.exe`.
+
+## Gerar no Windows
+
+Recomendado: Python 3.14 64 bits.
+
+Abra a pasta do projeto e execute:
 
 ```bat
 build_windows.bat
 ```
 
-O executável será criado em:
+O script cria o ambiente virtual, instala as dependências e usa PyInstaller em modo `--onefile`.
 
+Ao terminar, use somente:
+
+```text
+dist\HernandesCheckout.exe
 ```
-dist\HernandesCheckout\HernandesCheckout.exe
-```
 
-Mantenha toda a pasta `HernandesCheckout`, pois o QtWebEngine utiliza arquivos auxiliares junto do executável.
+## Teste sem gerar EXE
 
-## Iniciar com o Windows
-
-Depois de gerar o EXE, execute:
+Para desenvolvimento:
 
 ```bat
-CRIAR_ATALHO_INICIALIZACAO.bat
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+py src\main.py --windowed
 ```
 
-Para remover a inicialização automática:
+## Sessão do e-commerce
 
-```bat
-REMOVER_INICIALIZACAO.bat
-```
-
-## Configuração
-
-Edite `config.json` para alterar URL, altura do teclado e velocidade da animação.
-
-## Build automático
-
-O repositório contém um workflow do GitHub Actions que compila a versão Windows e publica o resultado como artefato do workflow.
+Cookies e dados da sessão não ficam ao lado do EXE. O QtWebEngine grava o perfil persistente na pasta de dados do aplicativo do usuário do Windows, permitindo manter o login entre execuções.
