@@ -12,7 +12,7 @@ namespace HernandesCheckout;
 public partial class MainWindow : Window
 {
     private const string HomeUrl = "https://www.grupohernandes.com.br/";
-    private const double KeyboardHiddenY = 500;
+    private const double KeyboardHeight = 458;
 
     private bool _allowClose;
     private bool _keyboardVisible;
@@ -69,8 +69,11 @@ public partial class MainWindow : Window
 
             Browser.CoreWebView2.NavigationStarting += (_, _) =>
             {
+                _webReady = false;
                 ShowStatus("Carregando e-commerce...", 12);
-                HideKeyboard(animate: false, clearWebFocus: false);
+                HideKeyboard(
+                    animate: false,
+                    clearWebFocus: false);
             };
 
             Browser.CoreWebView2.NavigationCompleted += (_, args) =>
@@ -78,8 +81,9 @@ public partial class MainWindow : Window
                 if (args.IsSuccess)
                 {
                     _webReady = true;
-                    HideStatus();
+                    Browser.Visibility = Visibility.Visible;
                     StartupError.Visibility = Visibility.Collapsed;
+                    HideStatus();
                 }
                 else
                 {
@@ -126,7 +130,9 @@ public partial class MainWindow : Window
         var resourceName = assembly
             .GetManifestResourceNames()
             .Single(name =>
-                name.EndsWith(fileName, StringComparison.OrdinalIgnoreCase));
+                name.EndsWith(
+                    fileName,
+                    StringComparison.OrdinalIgnoreCase));
 
         using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException(
@@ -142,7 +148,9 @@ public partial class MainWindow : Window
     {
         try
         {
-            using var document = JsonDocument.Parse(e.WebMessageAsJson);
+            using var document =
+                JsonDocument.Parse(e.WebMessageAsJson);
+
             var root = document.RootElement;
 
             if (!root.TryGetProperty("type", out var type) ||
@@ -151,17 +159,24 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var action = root.TryGetProperty("action", out var actionElement)
-                ? actionElement.GetString()
-                : null;
+            var action =
+                root.TryGetProperty(
+                    "action",
+                    out var actionElement)
+                    ? actionElement.GetString()
+                    : null;
 
             if (action == "show")
             {
-                var kind = root.TryGetProperty("kind", out var kindElement)
-                    ? kindElement.GetString()
-                    : "text";
+                var kind =
+                    root.TryGetProperty(
+                        "kind",
+                        out var kindElement)
+                        ? kindElement.GetString()
+                        : "text";
 
-                Dispatcher.Invoke(() => ShowKeyboard(kind ?? "text"));
+                Dispatcher.Invoke(
+                    () => ShowKeyboard(kind ?? "text"));
             }
             else if (action == "hide")
             {
@@ -190,19 +205,15 @@ public partial class MainWindow : Window
         _keyboardVisible = true;
         KeyboardContainer.IsHitTestVisible = true;
 
-        Animate(
-            KeyboardTranslate,
-            TranslateTransform.YProperty,
-            KeyboardTranslate.Y,
-            0,
-            150);
+        AnimateKeyboardHeight(
+            KeyboardHeight,
+            milliseconds: 135);
 
-        Animate(
+        AnimateOpacity(
             KeyboardContainer,
-            OpacityProperty,
             KeyboardContainer.Opacity,
             1,
-            110);
+            milliseconds: 95);
 
         _ = EnsureTargetVisibleAsync();
     }
@@ -212,7 +223,7 @@ public partial class MainWindow : Window
         bool clearWebFocus)
     {
         if (!_keyboardVisible &&
-            Math.Abs(KeyboardTranslate.Y - KeyboardHiddenY) < 1)
+            KeyboardContainer.ActualHeight < 1)
         {
             return;
         }
@@ -222,23 +233,23 @@ public partial class MainWindow : Window
 
         if (animate)
         {
-            Animate(
-                KeyboardTranslate,
-                TranslateTransform.YProperty,
-                KeyboardTranslate.Y,
-                KeyboardHiddenY,
-                125);
+            AnimateKeyboardHeight(
+                0,
+                milliseconds: 115);
 
-            Animate(
+            AnimateOpacity(
                 KeyboardContainer,
-                OpacityProperty,
                 KeyboardContainer.Opacity,
                 0,
-                95);
+                milliseconds: 85);
         }
         else
         {
-            KeyboardTranslate.Y = KeyboardHiddenY;
+            KeyboardContainer.BeginAnimation(
+                HeightProperty,
+                null);
+
+            KeyboardContainer.Height = 0;
             KeyboardContainer.Opacity = 0;
         }
 
@@ -249,9 +260,46 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void Animate(
-        System.Windows.DependencyObject target,
-        DependencyProperty property,
+    private void AnimateKeyboardHeight(
+        double target,
+        int milliseconds)
+    {
+        KeyboardContainer.BeginAnimation(
+            HeightProperty,
+            null);
+
+        var current = KeyboardContainer.ActualHeight;
+
+        var animation = new DoubleAnimation
+        {
+            From = current,
+            To = target,
+            Duration =
+                TimeSpan.FromMilliseconds(milliseconds),
+            EasingFunction = new CubicEase
+            {
+                EasingMode = EasingMode.EaseOut,
+            },
+            FillBehavior = FillBehavior.Stop,
+        };
+
+        animation.Completed += (_, _) =>
+        {
+            KeyboardContainer.BeginAnimation(
+                HeightProperty,
+                null);
+
+            KeyboardContainer.Height = target;
+        };
+
+        KeyboardContainer.BeginAnimation(
+            HeightProperty,
+            animation,
+            HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private static void AnimateOpacity(
+        UIElement target,
         double from,
         double to,
         int milliseconds)
@@ -260,7 +308,8 @@ public partial class MainWindow : Window
         {
             From = from,
             To = to,
-            Duration = TimeSpan.FromMilliseconds(milliseconds),
+            Duration =
+                TimeSpan.FromMilliseconds(milliseconds),
             EasingFunction = new CubicEase
             {
                 EasingMode = EasingMode.EaseOut,
@@ -268,12 +317,16 @@ public partial class MainWindow : Window
             FillBehavior = FillBehavior.HoldEnd,
         };
 
-        target.BeginAnimation(property, animation);
+        target.BeginAnimation(
+            OpacityProperty,
+            animation,
+            HandoffBehavior.SnapshotAndReplace);
     }
 
     private async Task EnsureTargetVisibleAsync()
     {
-        await Task.Delay(85);
+        await Task.Delay(95);
+
         await ExecuteScriptSerialAsync(
             "window.__hernandesEnsureTargetVisible?.();");
     }
@@ -300,7 +353,8 @@ public partial class MainWindow : Window
 
     private async Task ExecuteScriptSerialAsync(string script)
     {
-        if (!_webReady || Browser.CoreWebView2 is null)
+        if (!_webReady ||
+            Browser.CoreWebView2 is null)
         {
             return;
         }
@@ -313,7 +367,7 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // Navigation may replace the document between key taps.
+            // Navigation can replace the document between taps.
         }
         finally
         {
@@ -321,7 +375,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowStatus(string text, double progress)
+    private void ShowStatus(
+        string text,
+        double progress)
     {
         StatusText.Text = text;
         LoadProgress.Value = progress;
@@ -337,8 +393,12 @@ public partial class MainWindow : Window
     private void ShowNavigationError(string text)
     {
         _webReady = false;
-        HideKeyboard(animate: false, clearWebFocus: false);
 
+        HideKeyboard(
+            animate: false,
+            clearWebFocus: false);
+
+        Browser.Visibility = Visibility.Collapsed;
         ErrorText.Text = text;
         StartupError.Visibility = Visibility.Visible;
         StatusBar.Visibility = Visibility.Collapsed;
@@ -349,6 +409,7 @@ public partial class MainWindow : Window
         RoutedEventArgs e)
     {
         StartupError.Visibility = Visibility.Collapsed;
+        Browser.Visibility = Visibility.Visible;
 
         if (Browser.CoreWebView2 is null)
         {
@@ -363,8 +424,11 @@ public partial class MainWindow : Window
         object sender,
         KeyEventArgs e)
     {
-        if (System.Windows.Input.Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
-            System.Windows.Input.Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) &&
+        var modifiers =
+            System.Windows.Input.Keyboard.Modifiers;
+
+        if (modifiers.HasFlag(ModifierKeys.Control) &&
+            modifiers.HasFlag(ModifierKeys.Shift) &&
             e.Key == Key.F12)
         {
             _allowClose = true;
