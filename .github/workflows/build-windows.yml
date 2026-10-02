@@ -1,0 +1,49 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build single executable
+        shell: cmd
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name HernandesCheckout --paths "src" --add-data "src\resources\keyboard_bridge.js;resources" --collect-all PySide6.QtWebEngineCore --collect-all PySide6.QtWebEngineWidgets "src\main.py"
+
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\HernandesCheckout.exe")) {
+            throw "HernandesCheckout.exe was not generated"
+          }
+          Get-Item "dist\HernandesCheckout.exe" | Format-List Name,Length,LastWriteTime
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: HernandesCheckout-Windows
+          path: dist/HernandesCheckout.exe
+          if-no-files-found: error
