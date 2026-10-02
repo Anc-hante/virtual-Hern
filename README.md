@@ -82,3 +82,23 @@ Cada push na branch `main` gera e valida uma versão Windows. O artefato é publ
 ## Primeiro login
 
 A primeira execução da versão WebView2 usa um novo perfil de navegador. Faça login uma vez. Nas próximas execuções, a sessão fica salva no perfil persistente.
+
+
+## Ciclo de atendimento
+
+No primeiro clique em **Adicionar** de cada atendimento:
+
+1. O checkout pergunta se o cliente já possui cadastro.
+2. **Sim**: a compra continua normalmente.
+3. **Não**: solicita nome e telefone antes de liberar a primeira inclusão.
+4. Depois da identificação, a pergunta não aparece novamente enquanto o atendimento estiver ativo.
+
+O ciclo é reiniciado quando:
+
+- o pedido é concluído;
+- passam 2 minutos sem interação;
+- o operador toca em **Reiniciar e-commerce** no topo.
+
+Leads informados no fluxo **Não** são registrados em:
+
+`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\leads.csv`
