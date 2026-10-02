@@ -681,6 +681,21 @@
       if (element) return element;
     }
 
+    const removeIcon = document.querySelector(
+      '.fa-trash, .fa-trash-o, .fa-times, ' +
+      '.fa-remove, [class*="trash" i]'
+    );
+
+    if (removeIcon) {
+      const control = removeIcon.closest(
+        'button, a, [role="button"]'
+      );
+
+      if (control) {
+        return control;
+      }
+    }
+
     return [
       ...document.querySelectorAll(
         'button, a, [role="button"]'
