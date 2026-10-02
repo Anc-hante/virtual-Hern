@@ -9,6 +9,7 @@ public partial class VirtualKeyboard : UserControl
     public event EventHandler? HideRequested;
 
     private string _kind = "text";
+    private bool _shiftActive;
 
     public VirtualKeyboard()
     {
@@ -19,12 +20,23 @@ public partial class VirtualKeyboard : UserControl
     public void SetKind(string? kind)
     {
         kind = kind is "email" or "numeric" ? kind : "text";
+
         if (_kind == kind)
         {
             return;
         }
 
+        _shiftActive = false;
         BuildLayout(kind);
+    }
+
+    private string LetterText(char character)
+    {
+        var value = character.ToString();
+
+        return _shiftActive
+            ? value.ToUpperInvariant()
+            : value.ToLowerInvariant();
     }
 
     private void BuildLayout(string kind)
@@ -59,40 +71,69 @@ public partial class VirtualKeyboard : UserControl
             {
                 Key("APAGAR", "backspace", "", "danger", 1.3),
                 Key("0", "text", "0", "number"),
-                Key("OK", "enter", "", "primary", 1.3),
+                Key("ENTER", "enter", "", "primary", 1.3),
             });
+
             return;
         }
 
         AddRow("1234567890"
-            .Select(c => Key(c.ToString(), "text", c.ToString(), "number"))
+            .Select(c => Key(
+                c.ToString(),
+                "text",
+                c.ToString(),
+                "number"))
             .ToArray());
 
         AddRow("QWERTYUIOP"
-            .Select(c => Key(c.ToString(), "text", char.ToLowerInvariant(c).ToString()))
+            .Select(c => Key(
+                _shiftActive
+                    ? c.ToString().ToUpperInvariant()
+                    : c.ToString().ToLowerInvariant(),
+                "text",
+                LetterText(c)))
             .ToArray());
 
         AddRow("ASDFGHJKLÇ"
-            .Select(c => Key(c.ToString(), "text", char.ToLowerInvariant(c).ToString()))
+            .Select(c => Key(
+                _shiftActive
+                    ? c.ToString().ToUpperInvariant()
+                    : c.ToString().ToLowerInvariant(),
+                "text",
+                LetterText(c)))
             .ToArray());
 
-        var third = "ZXCVBNM"
-            .Select(c => Key(c.ToString(), "text", char.ToLowerInvariant(c).ToString()))
-            .ToList();
+        var third = new List<KeySpec>
+        {
+            Key(
+                _shiftActive ? "⇧ SHIFT" : "⇧ Shift",
+                "shift",
+                "",
+                _shiftActive ? "shiftActive" : "shift",
+                1.55),
+        };
 
-        third.Add(Key(",", "text", ",", "number"));
-        third.Add(Key(".", "text", ".", "number"));
-        third.Add(Key("-", "text", "-", "number"));
+        third.AddRange("ZXCVBNM"
+            .Select(c => Key(
+                _shiftActive
+                    ? c.ToString().ToUpperInvariant()
+                    : c.ToString().ToLowerInvariant(),
+                "text",
+                LetterText(c))));
+
         AddRow(third.ToArray());
 
         AddRow(new[]
         {
             kind == "email"
-                ? Key("@", "text", "@", "number", 1.0)
-                : Key("/", "text", "/", "number", 1.0),
-            Key("ESPAÇO", "text", " ", "normal", 4.8),
-            Key("APAGAR", "backspace", "", "danger", 1.8),
-            Key("OK", "enter", "", "primary", 1.7),
+                ? Key("@", "text", "@", "number", 0.9)
+                : Key("/", "text", "/", "number", 0.9),
+            Key(",", "text", ",", "number", 0.75),
+            Key(".", "text", ".", "number", 0.75),
+            Key("-", "text", "-", "number", 0.75),
+            Key("ESPAÇO", "text", " ", "normal", 4.2),
+            Key("APAGAR", "backspace", "", "danger", 1.65),
+            Key("ENTER", "enter", "", "primary", 1.65),
         });
     }
 
@@ -116,13 +157,16 @@ public partial class VirtualKeyboard : UserControl
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition
             {
-                Width = new GridLength(key.Weight, GridUnitType.Star),
+                Width = new GridLength(
+                    key.Weight,
+                    GridUnitType.Star),
             });
         }
 
         for (var index = 0; index < keys.Count; index++)
         {
             var spec = keys[index];
+
             var button = new Button
             {
                 Content = spec.Label,
@@ -132,6 +176,7 @@ public partial class VirtualKeyboard : UserControl
             };
 
             button.Click += KeyButton_Click;
+
             Grid.SetColumn(button, index);
             grid.Children.Add(button);
         }
@@ -146,23 +191,40 @@ public partial class VirtualKeyboard : UserControl
             "number" => "NumberKeyStyle",
             "danger" => "DangerKeyStyle",
             "primary" => "PrimaryKeyStyle",
+            "shift" => "ShiftKeyStyle",
+            "shiftActive" => "ShiftActiveKeyStyle",
             _ => "TouchKeyStyle",
         };
 
         return (Style)Application.Current.FindResource(key);
     }
 
-    private void KeyButton_Click(object sender, RoutedEventArgs e)
+    private void KeyButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
-        if (sender is Button { Tag: KeySpec spec })
+        if (sender is not Button { Tag: KeySpec spec })
         {
-            KeyRequested?.Invoke(
-                this,
-                new VirtualKeyEventArgs(spec.Action, spec.Text));
+            return;
         }
+
+        if (spec.Action == "shift")
+        {
+            _shiftActive = !_shiftActive;
+            BuildLayout(_kind);
+            return;
+        }
+
+        KeyRequested?.Invoke(
+            this,
+            new VirtualKeyEventArgs(
+                spec.Action,
+                spec.Text));
     }
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    private void CloseButton_Click(
+        object sender,
+        RoutedEventArgs e)
         => HideRequested?.Invoke(this, EventArgs.Empty);
 
     private sealed record KeySpec(
@@ -175,7 +237,9 @@ public partial class VirtualKeyboard : UserControl
 
 public sealed class VirtualKeyEventArgs : EventArgs
 {
-    public VirtualKeyEventArgs(string action, string text)
+    public VirtualKeyEventArgs(
+        string action,
+        string text)
     {
         Action = action;
         Text = text;
