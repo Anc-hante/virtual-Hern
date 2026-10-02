@@ -28,10 +28,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Validate Python
+        shell: pwsh
+        run: |
+          python -m compileall -q src
+
       - name: Build single executable
         shell: cmd
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name HernandesCheckout --paths "src" --add-data "src\resources\keyboard_bridge.js;resources" --collect-all PySide6.QtWebEngineCore --collect-all PySide6.QtWebEngineWidgets "src\main.py"
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name HernandesCheckout --paths "src" --add-data "src\resources;resources" --collect-all PySide6.QtWebEngineCore --collect-all PySide6.QtWebEngineWidgets "src\main.py"
 
       - name: Verify executable
         shell: pwsh
