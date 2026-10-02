@@ -150,19 +150,32 @@
       } else if (action === 'text') {
         document.execCommand('insertText', false, text);
       } else if (action === 'enter') {
-        el.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'Enter',
-          code: 'Enter',
-          bubbles: true
-        }));
+        for (const type of ['keydown', 'keypress', 'keyup']) {
+          const event = new KeyboardEvent(type, {
+            key: 'Enter',
+            code: 'Enter',
+            bubbles: true,
+            cancelable: true,
+            composed: true
+          });
 
-        el.dispatchEvent(new KeyboardEvent('keyup', {
-          key: 'Enter',
-          code: 'Enter',
-          bubbles: true
-        }));
+          try {
+            Object.defineProperty(event, 'keyCode', {
+              configurable: true,
+              get: () => 13
+            });
+            Object.defineProperty(event, 'which', {
+              configurable: true,
+              get: () => 13
+            });
+          } catch (_) {}
 
-        post({ type: 'keyboard', action: 'hide' });
+          el.dispatchEvent(event);
+        }
+
+        window.setTimeout(() => {
+          post({ type: 'keyboard', action: 'hide' });
+        }, 40);
       }
 
       return true;
@@ -222,25 +235,68 @@
     }
 
     if (action === 'enter') {
-      el.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        bubbles: true
-      }));
+      const fireEnter = (type) => {
+        const event = new KeyboardEvent(type, {
+          key: 'Enter',
+          code: 'Enter',
+          location: 0,
+          bubbles: true,
+          cancelable: true,
+          composed: true
+        });
 
-      el.dispatchEvent(new KeyboardEvent('keyup', {
-        key: 'Enter',
-        code: 'Enter',
-        bubbles: true
-      }));
+        // Several legacy search handlers still inspect keyCode/which
+        // instead of event.key. Synthetic KeyboardEvent does not expose
+        // those values consistently unless we provide them explicitly.
+        for (const [name, value] of [
+          ['keyCode', 13],
+          ['which', 13],
+          ['charCode', type === 'keypress' ? 13 : 0]
+        ]) {
+          try {
+            Object.defineProperty(event, name, {
+              configurable: true,
+              get: () => value
+            });
+          } catch (_) {}
+        }
 
-      if (el.form && typeof el.form.requestSubmit === 'function') {
-        try { el.form.requestSubmit(); } catch (_) {}
+        return el.dispatchEvent(event);
+      };
+
+      const keyDownNotCancelled = fireEnter('keydown');
+      const keyPressNotCancelled = fireEnter('keypress');
+      fireEnter('keyup');
+
+      // Synthetic key events do not execute the browser's native
+      // "submit on Enter" default action. Reproduce it only when the
+      // page did not cancel the Enter itself.
+      if (
+        keyDownNotCancelled &&
+        keyPressNotCancelled &&
+        el.form &&
+        typeof el.form.requestSubmit === 'function'
+      ) {
+        try {
+          const submitter = el.form.querySelector(
+            'button[type="submit"], input[type="submit"]'
+          );
+
+          if (submitter) {
+            el.form.requestSubmit(submitter);
+          } else {
+            el.form.requestSubmit();
+          }
+        } catch (_) {}
       }
 
-      try { el.blur(); } catch (_) {}
+      // Keep the field focused. Blurring immediately after Enter was
+      // causing some autocomplete/search components to restore the
+      // previous value before processing the search.
+      window.setTimeout(() => {
+        post({ type: 'keyboard', action: 'hide' });
+      }, 40);
 
-      post({ type: 'keyboard', action: 'hide' });
       return true;
     }
 
