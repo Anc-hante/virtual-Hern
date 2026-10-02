@@ -71,7 +71,7 @@ public partial class VirtualKeyboard : UserControl
             {
                 Key("APAGAR", "backspace", "", "danger", 1.3),
                 Key("0", "text", "0", "number"),
-                Key("ENTER", "enter", "", "primary", 1.3),
+                Key("OK ↵", "enter", "", "primary", 1.3),
             });
 
             return;
@@ -133,7 +133,7 @@ public partial class VirtualKeyboard : UserControl
             Key("-", "text", "-", "number", 0.75),
             Key("ESPAÇO", "text", " ", "normal", 4.2),
             Key("APAGAR", "backspace", "", "danger", 1.65),
-            Key("ENTER", "enter", "", "primary", 1.65),
+            Key("OK ↵", "enter", "", "primary", 1.65),
         });
     }
 
