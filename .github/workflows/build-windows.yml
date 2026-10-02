@@ -16,6 +16,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate embedded scripts
+        shell: pwsh
+        run: |
+          node --check "src/HernandesCheckout/Resources/keyboard_bridge.js"
+          node --check "src/HernandesCheckout/Resources/kiosk_session.js"
+          node --check "src/HernandesCheckout/Resources/checkout_flow.js"
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
