@@ -27,29 +27,29 @@ class KeyboardPanel(QWidget):
         self.setMaximumHeight(0)
 
         self.root = QVBoxLayout(self)
-        self.root.setContentsMargins(12, 10, 12, 12)
-        self.root.setSpacing(8)
+        self.root.setContentsMargins(16, 8, 16, 14)
+        self.root.setSpacing(7)
 
         header = QHBoxLayout()
-        title = QLabel("TECLADO HERNANDES")
+        header.setContentsMargins(2, 0, 2, 1)
+
+        title = QLabel("HERNANDES  •  TECLADO VIRTUAL")
         title.setObjectName("keyboardTitle")
 
-        hint = QLabel("Toque fora do campo ou em OK para fechar")
-        hint.setObjectName("keyboardHint")
-
-        close_button = QPushButton("Fechar")
+        close_button = QPushButton("×")
         close_button.setObjectName("closeKey")
+        close_button.setAccessibleName("Fechar teclado")
         close_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        close_button.setFixedSize(42, 34)
         close_button.clicked.connect(self.request_hide.emit)
 
         header.addWidget(title)
         header.addStretch(1)
-        header.addWidget(hint)
-        header.addSpacing(8)
         header.addWidget(close_button)
         self.root.addLayout(header)
 
         self.keys_host = QWidget()
+        self.keys_host.setObjectName("keysHost")
         self.keys_layout = QVBoxLayout(self.keys_host)
         self.keys_layout.setContentsMargins(0, 0, 0, 0)
         self.keys_layout.setSpacing(7)
@@ -84,8 +84,13 @@ class KeyboardPanel(QWidget):
     ):
         button = QPushButton(label)
         button.setObjectName(object_name)
+        button.setAccessibleName(label)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        button.setMinimumHeight(58)
+        button.setMinimumHeight(50)
+        button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         payload = label.lower() if text is None else text
         button.clicked.connect(
@@ -94,11 +99,15 @@ class KeyboardPanel(QWidget):
         )
         return button
 
-    def make_row(self, specs, stretches=None):
+    def make_row(self, specs, stretches=None, edge_padding=0):
         row = QWidget()
+        row.setObjectName("keyRow")
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(7)
+
+        if edge_padding:
+            layout.addStretch(edge_padding)
 
         for index, spec in enumerate(specs):
             label, action, text, object_name = spec
@@ -111,7 +120,16 @@ class KeyboardPanel(QWidget):
             stretch = stretches[index] if stretches else 1
             layout.addWidget(button, stretch)
 
+        if edge_padding:
+            layout.addStretch(edge_padding)
+
         return row
+
+    def number_row(self):
+        return [
+            (digit, "text", digit, "numberKey")
+            for digit in "1234567890"
+        ]
 
     def build_layout(self, kind):
         self._kind = kind
@@ -120,23 +138,23 @@ class KeyboardPanel(QWidget):
         if kind == "numeric":
             rows = [
                 [
-                    ("1", "text", "1", "key"),
-                    ("2", "text", "2", "key"),
-                    ("3", "text", "3", "key"),
+                    ("1", "text", "1", "numberKey"),
+                    ("2", "text", "2", "numberKey"),
+                    ("3", "text", "3", "numberKey"),
                 ],
                 [
-                    ("4", "text", "4", "key"),
-                    ("5", "text", "5", "key"),
-                    ("6", "text", "6", "key"),
+                    ("4", "text", "4", "numberKey"),
+                    ("5", "text", "5", "numberKey"),
+                    ("6", "text", "6", "numberKey"),
                 ],
                 [
-                    ("7", "text", "7", "key"),
-                    ("8", "text", "8", "key"),
-                    ("9", "text", "9", "key"),
+                    ("7", "text", "7", "numberKey"),
+                    ("8", "text", "8", "numberKey"),
+                    ("9", "text", "9", "numberKey"),
                 ],
                 [
                     ("APAGAR", "backspace", "", "dangerKey"),
-                    ("0", "text", "0", "key"),
+                    ("0", "text", "0", "numberKey"),
                     ("OK", "enter", "", "primaryKey"),
                 ],
             ]
@@ -144,37 +162,37 @@ class KeyboardPanel(QWidget):
                 self.keys_layout.addWidget(self.make_row(row))
             return
 
-        rows = [
-            [(c, "text", c.lower(), "key") for c in "QWERTYUIOP"],
-            [(c, "text", c.lower(), "key") for c in "ASDFGHJKL"],
-            [(c, "text", c.lower(), "key") for c in "ZXCVBNM"],
-        ]
-        rows[-1].append(("Ç", "text", "ç", "key"))
+        self.keys_layout.addWidget(
+            self.make_row(self.number_row())
+        )
 
-        for row in rows:
+        letters = [
+            [(c, "text", c.lower(), "key") for c in "QWERTYUIOP"],
+            [(c, "text", c.lower(), "key") for c in "ASDFGHJKLÇ"],
+            [
+                (c, "text", c.lower(), "key")
+                for c in "ZXCVBNM"
+            ] + [
+                (",", "text", ",", "symbolKey"),
+                (".", "text", ".", "symbolKey"),
+                ("-", "text", "-", "symbolKey"),
+            ],
+        ]
+
+        for row in letters:
             self.keys_layout.addWidget(self.make_row(row))
 
-        if kind == "email":
-            extras = [
-                ("@", "text", "@", "accentKey"),
-                (".com", "text", ".com", "accentKey"),
-                (".com.br", "text", ".com.br", "accentKey"),
-                ("ESPAÇO", "text", " ", "spaceKey"),
-                ("APAGAR", "backspace", "", "dangerKey"),
-                ("OK", "enter", "", "primaryKey"),
-            ]
-        else:
-            extras = [
-                ("123", "text", "123", "accentKey"),
-                ("-", "text", "-", "accentKey"),
-                ("/", "text", "/", "accentKey"),
-                ("ESPAÇO", "text", " ", "spaceKey"),
-                ("APAGAR", "backspace", "", "dangerKey"),
-                ("OK", "enter", "", "primaryKey"),
-            ]
+        first_label = "@" if kind == "email" else "/"
+        first_text = "@" if kind == "email" else "/"
 
+        bottom = [
+            (first_label, "text", first_text, "accentKey"),
+            ("ESPAÇO", "text", " ", "spaceKey"),
+            ("APAGAR", "backspace", "", "dangerKey"),
+            ("OK", "enter", "", "primaryKey"),
+        ]
         self.keys_layout.addWidget(
-            self.make_row(extras, [1, 1, 1, 3, 1, 1])
+            self.make_row(bottom, [1, 5, 2, 2])
         )
 
     def set_kind(self, kind):
