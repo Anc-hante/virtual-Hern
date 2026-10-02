@@ -16,23 +16,27 @@ if errorlevel 1 (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-  echo [1/4] Criando ambiente virtual...
+  echo [1/5] Criando ambiente virtual...
   py -m venv .venv
 )
 
 call ".venv\Scripts\activate.bat"
 
-echo [2/4] Instalando dependencias...
+echo [2/5] Instalando dependencias...
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 if errorlevel 1 goto :error
 
-echo [3/4] Limpando build anterior...
+echo [3/5] Validando codigo...
+python -m compileall -q src
+if errorlevel 1 goto :error
+
+echo [4/5] Limpando build anterior...
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 if exist HernandesCheckout.spec del /q HernandesCheckout.spec
 
-echo [4/4] Gerando um unico HernandesCheckout.exe...
+echo [5/5] Gerando um unico HernandesCheckout.exe...
 python -m PyInstaller ^
   --noconfirm ^
   --clean ^
@@ -40,7 +44,7 @@ python -m PyInstaller ^
   --windowed ^
   --name HernandesCheckout ^
   --paths "src" ^
-  --add-data "src\resources\keyboard_bridge.js;resources" ^
+  --add-data "src\resources;resources" ^
   --collect-all PySide6.QtWebEngineCore ^
   --collect-all PySide6.QtWebEngineWidgets ^
   "src\main.py"
