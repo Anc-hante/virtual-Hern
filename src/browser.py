@@ -49,12 +49,19 @@ class CheckoutBrowser(QWebEngineView):
         profile_dir.mkdir(parents=True, exist_ok=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # A named, disk-backed profile keeps authentication cookies,
+        # local storage, IndexedDB and the HTTP cache between executions.
         self.profile = QWebEngineProfile("hernandes-kiosk", self)
         self.profile.setPersistentStoragePath(str(profile_dir))
         self.profile.setCachePath(str(cache_dir))
+        self.profile.setHttpCacheType(
+            QWebEngineProfile.HttpCacheType.DiskHttpCache
+        )
+        self.profile.setHttpCacheMaximumSize(256 * 1024 * 1024)
         self.profile.setPersistentCookiesPolicy(
             QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies
         )
+        self.profile.cookieStore().loadAllCookies()
 
         self.checkout_page = CheckoutPage(self.profile, self)
         self.checkout_page.setBackgroundColor(QColor("#ffffff"))
@@ -72,25 +79,35 @@ class CheckoutBrowser(QWebEngineView):
             QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, True
         )
 
-        bridge_source = resource_path(
-            "resources/keyboard_bridge.js"
-        ).read_text(encoding="utf-8")
-
-        bridge = QWebEngineScript()
-        bridge.setName("HernandesKeyboardBridge")
-        bridge.setInjectionPoint(
-            QWebEngineScript.InjectionPoint.DocumentReady
+        self.install_script(
+            name="HernandesKeyboardBridge",
+            filename="keyboard_bridge.js",
         )
-        bridge.setRunsOnSubFrames(False)
-        bridge.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-        bridge.setSourceCode(bridge_source)
-        self.checkout_page.scripts().insert(bridge)
+        self.install_script(
+            name="HernandesCheckoutFlow",
+            filename="checkout_flow.js",
+        )
 
         self.checkout_page.renderProcessTerminated.connect(
             lambda *_: QTimer.singleShot(800, self.reload)
         )
 
         self.setUrl(QUrl(url))
+
+    def install_script(self, name: str, filename: str):
+        source = resource_path(
+            f"resources/{filename}"
+        ).read_text(encoding="utf-8")
+
+        script = QWebEngineScript()
+        script.setName(name)
+        script.setInjectionPoint(
+            QWebEngineScript.InjectionPoint.DocumentReady
+        )
+        script.setRunsOnSubFrames(False)
+        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        script.setSourceCode(source)
+        self.checkout_page.scripts().insert(script)
 
     def send_virtual_key(self, action: str, text: str = ""):
         action_json = json.dumps(action, ensure_ascii=False)
