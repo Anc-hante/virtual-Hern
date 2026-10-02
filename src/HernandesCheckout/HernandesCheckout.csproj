@@ -26,6 +26,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\keyboard_bridge.js" />
     <EmbeddedResource Include="Resources\checkout_flow.js" />
+    <EmbeddedResource Include="Resources\kiosk_session.js" />
   </ItemGroup>
 
 </Project>
