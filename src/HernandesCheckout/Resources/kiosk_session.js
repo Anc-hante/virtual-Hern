@@ -24,6 +24,61 @@
     } catch (_) {}
   };
 
+  const postTotem = (eventType, data = {}) => {
+    post({
+      type: 'totem_event',
+      event_type: eventType,
+      ...data
+    });
+  };
+
+  const productEventData = (button) => {
+    const host =
+      button.closest(
+        '[data-id-produto], [data-codigo-produto], .product-card, .product_info'
+      ) || button.parentElement;
+
+    const dataset = {
+      ...(host?.dataset || {}),
+      ...(button.dataset || {})
+    };
+
+    const quantityInput =
+      host?.querySelector(
+        'input[type="number"], input[name*="quant" i], input[name*="qtd" i]'
+      ) || null;
+
+    const text =
+      (host?.innerText || button.innerText || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 500);
+
+    return {
+      payload: {
+        product_id:
+          dataset.idProduto ||
+          dataset.codprod ||
+          dataset.codigoProduto ||
+          dataset.codigo ||
+          '',
+        product_parent_id:
+          dataset.idProdutoPai || '',
+        product_name:
+          dataset.nome ||
+          dataset.name ||
+          dataset.produto ||
+          text,
+        quantity:
+          quantityInput?.value || dataset.quantidade || null,
+        price:
+          dataset.preco || dataset.price || null,
+        page:
+          window.location.pathname
+      }
+    };
+  };
+
   const reportActivity = () => {
     const now = Date.now();
     if (now - lastActivityPost < 750) return;
@@ -448,6 +503,10 @@
           createdAt: new Date().toISOString()
         });
 
+        postTotem('customer_existing', {
+          customer_type: 'registered'
+        });
+
         overlay.remove();
         reportActivity();
         replayAdd(button);
@@ -585,6 +644,12 @@
           at: state.createdAt
         });
 
+        postTotem('customer_new', {
+          customer_type: 'new-lead',
+          customer_name: state.name,
+          customer_phone: state.phone
+        });
+
         overlay.remove();
         reportActivity();
         replayAdd(button);
@@ -599,10 +664,12 @@
 
     if (button.dataset.hernandesKioskBypass === '1') {
       delete button.dataset.hernandesKioskBypass;
+      postTotem('product_added', productEventData(button));
       return;
     }
 
     if (verifiedForCycle()) {
+      postTotem('product_added', productEventData(button));
       return;
     }
 
