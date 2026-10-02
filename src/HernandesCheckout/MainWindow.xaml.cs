@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _keyboardVisible;
     private bool _webReady;
+    private bool _completionLocked;
     private bool _sessionStartedSent;
     private bool _startNewSessionOnNextHome;
     private string _totemSessionId = Guid.NewGuid().ToString("N");
@@ -86,8 +87,14 @@ public partial class MainWindow : Window
             Browser.CoreWebView2.WebMessageReceived +=
                 CoreWebView2_WebMessageReceived;
 
-            Browser.CoreWebView2.NavigationStarting += (_, _) =>
+            Browser.CoreWebView2.NavigationStarting += (_, args) =>
             {
+                if (_completionLocked)
+                {
+                    args.Cancel = true;
+                    return;
+                }
+
                 _webReady = false;
 
                 ShowStatus(
@@ -264,6 +271,20 @@ public partial class MainWindow : Window
         if (action == "activity")
         {
             ResetInactivityTimer();
+            return;
+        }
+
+        if (action == "completion-lock")
+        {
+            _completionLocked = true;
+            _inactivityTimer.Stop();
+            return;
+        }
+
+        if (action == "completion-release")
+        {
+            _completionLocked = false;
+            _startNewSessionOnNextHome = true;
             return;
         }
 
@@ -451,6 +472,7 @@ public partial class MainWindow : Window
 
     private async Task ResetCheckoutAsync(string reason)
     {
+        _completionLocked = false;
         RestartButton.IsEnabled = false;
 
         ShowStatus(
