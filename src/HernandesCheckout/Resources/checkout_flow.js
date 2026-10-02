@@ -21,6 +21,52 @@
     );
   };
 
+  const launchConfetti = (overlay) => {
+    const layer = overlay.querySelector('.__confetti-layer');
+    if (!layer) return;
+
+    const colors = [
+      '#A7191F',
+      '#D52B32',
+      '#F6C344',
+      '#2E9B50',
+      '#FFFFFF'
+    ];
+
+    const fragment = document.createDocumentFragment();
+
+    for (let index = 0; index < 46; index += 1) {
+      const piece = document.createElement('i');
+      piece.className = '__confetti';
+
+      const left = 4 + Math.random() * 92;
+      const delay = Math.random() * 0.5;
+      const duration = 1.7 + Math.random() * 1.15;
+      const drift = -90 + Math.random() * 180;
+      const rotation = 420 + Math.random() * 780;
+      const width = 7 + Math.random() * 7;
+      const height = 11 + Math.random() * 10;
+
+      piece.style.left = `${left}%`;
+      piece.style.width = `${width}px`;
+      piece.style.height = `${height}px`;
+      piece.style.background =
+        colors[index % colors.length];
+      piece.style.animationDelay = `${delay}s`;
+      piece.style.animationDuration = `${duration}s`;
+      piece.style.setProperty('--drift', `${drift}px`);
+      piece.style.setProperty('--spin', `${rotation}deg`);
+
+      fragment.appendChild(piece);
+    }
+
+    layer.appendChild(fragment);
+
+    window.setTimeout(() => {
+      layer.replaceChildren();
+    }, 3400);
+  };
+
   const showReturnHome = () => {
     if (!onConfirmationPage()) return;
     if (document.getElementById('__hernandes-return-home')) return;
@@ -45,46 +91,125 @@
           place-items: center;
           box-sizing: border-box;
           padding: 28px;
+          overflow: hidden;
           background:
             radial-gradient(circle at 50% 18%,
-              rgba(167,25,31,.08),
-              transparent 38%),
-            rgba(248,249,250,.98);
+              rgba(167,25,31,.09),
+              transparent 40%),
+            rgba(248,249,250,.985);
           font-family:
             "Segoe UI Variable Text",
             "Segoe UI",
             Arial,
             sans-serif;
           opacity: 0;
-          transition: opacity 160ms ease;
+          transition: opacity 150ms ease;
         }
 
         #__hernandes-return-home.__show {
           opacity: 1;
         }
 
+        #__hernandes-return-home .__confetti-layer {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: none;
+        }
+
+        #__hernandes-return-home .__confetti {
+          --drift: 0px;
+          --spin: 720deg;
+          position: absolute;
+          top: -30px;
+          display: block;
+          border-radius: 2px;
+          opacity: .96;
+          will-change: transform, opacity;
+          animation-name: __hernandes-confetti-fall;
+          animation-timing-function: cubic-bezier(.16,.72,.32,1);
+          animation-fill-mode: forwards;
+        }
+
+        @keyframes __hernandes-confetti-fall {
+          0% {
+            transform:
+              translate3d(0, -30px, 0)
+              rotate(0deg);
+            opacity: 0;
+          }
+
+          8% {
+            opacity: 1;
+          }
+
+          100% {
+            transform:
+              translate3d(var(--drift), 112vh, 0)
+              rotate(var(--spin));
+            opacity: .1;
+          }
+        }
+
         #__hernandes-return-home .__card {
+          position: relative;
+          z-index: 2;
           width: min(680px, 92vw);
           box-sizing: border-box;
           padding: 44px 38px 38px;
           border: 1px solid #eceef1;
           border-radius: 28px;
-          background: #fff;
+          background: rgba(255,255,255,.98);
           box-shadow: 0 24px 70px rgba(31,41,55,.13);
           text-align: center;
+          transform: translateY(24px) scale(.96);
+          opacity: 0;
+          animation:
+            __hernandes-card-in
+            420ms
+            cubic-bezier(.16,1,.3,1)
+            80ms
+            forwards;
+        }
+
+        @keyframes __hernandes-card-in {
+          to {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+          }
         }
 
         #__hernandes-return-home .__check {
           display: grid;
           place-items: center;
-          width: 86px;
-          height: 86px;
+          width: 92px;
+          height: 92px;
           margin: 0 auto 22px;
           border-radius: 999px;
           background: #edf9ef;
           color: #218838;
-          font-size: 48px;
+          font-size: 50px;
           font-weight: 800;
+          transform: scale(.3) rotate(-14deg);
+          opacity: 0;
+          animation:
+            __hernandes-check-pop
+            520ms
+            cubic-bezier(.18,1.55,.42,1)
+            220ms
+            forwards;
+        }
+
+        @keyframes __hernandes-check-pop {
+          70% {
+            transform: scale(1.12) rotate(2deg);
+            opacity: 1;
+          }
+
+          100% {
+            transform: scale(1) rotate(0);
+            opacity: 1;
+          }
         }
 
         #__hernandes-return-home .__eyebrow {
@@ -123,27 +248,51 @@
           font-weight: 800;
           cursor: pointer;
           box-shadow: 0 10px 24px rgba(167,25,31,.2);
+          transition:
+            transform 120ms ease,
+            background 120ms ease;
         }
 
         #__hernandes-return-home button:active {
           transform: scale(.985);
           background: #861419;
         }
+
+        @media (prefers-reduced-motion: reduce) {
+          #__hernandes-return-home .__confetti {
+            display: none;
+          }
+
+          #__hernandes-return-home .__card,
+          #__hernandes-return-home .__check {
+            animation-duration: 1ms;
+            animation-delay: 0ms;
+          }
+        }
       </style>
+
+      <div class="__confetti-layer"
+           aria-hidden="true"></div>
 
       <div class="__card"
            role="dialog"
            aria-modal="true"
            aria-labelledby="__hernandes-return-title">
         <div class="__check">✓</div>
-        <div class="__eyebrow">Pedido concluído</div>
+
+        <div class="__eyebrow">
+          Pedido concluído
+        </div>
+
         <h2 id="__hernandes-return-title">
           Compra finalizada com sucesso
         </h2>
+
         <p>
           Para iniciar um novo atendimento,
           toque no botão abaixo e volte para a página inicial.
         </p>
+
         <button id="__hernandes-go-home"
                 type="button">
           Voltar ao início
@@ -159,8 +308,10 @@
         window.location.assign(HOME_URL);
       }, { once: true });
 
-    requestAnimationFrame(
-      () => overlay.classList.add('__show'));
+    requestAnimationFrame(() => {
+      overlay.classList.add('__show');
+      launchConfetti(overlay);
+    });
   };
 
   const bindSuccessPopup = () => {
