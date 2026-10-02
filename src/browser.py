@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths, QTimer, QUrl, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
@@ -36,6 +37,7 @@ class CheckoutBrowser(QWebEngineView):
 
     def __init__(self, url: str, parent=None):
         super().__init__(parent)
+        self.setStyleSheet("background: #ffffff;")
 
         app_data = Path(
             QStandardPaths.writableLocation(
@@ -55,6 +57,7 @@ class CheckoutBrowser(QWebEngineView):
         )
 
         self.checkout_page = CheckoutPage(self.profile, self)
+        self.checkout_page.setBackgroundColor(QColor("#ffffff"))
         self.checkout_page.keyboard_event.connect(self.keyboard_event.emit)
         self.setPage(self.checkout_page)
 
