@@ -178,7 +178,10 @@ class MainWindow(QMainWindow):
                 "--compatibility",
             ]
 
-        if QProcess.startDetached(program, arguments):
+        result = QProcess.startDetached(program, arguments)
+        started = result[0] if isinstance(result, tuple) else bool(result)
+
+        if started:
             self.allow_close = True
             QTimer.singleShot(150, self.close)
 
