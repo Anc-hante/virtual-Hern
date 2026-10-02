@@ -1,10 +1,12 @@
 using System.ComponentModel;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 
 namespace HernandesCheckout;
@@ -13,15 +15,25 @@ public partial class MainWindow : Window
 {
     private const string HomeUrl = "https://www.grupohernandes.com.br/";
     private const double KeyboardHeight = 458;
+    private static readonly TimeSpan InactivityTimeout =
+        TimeSpan.FromMinutes(2);
 
     private bool _allowClose;
     private bool _keyboardVisible;
     private bool _webReady;
     private readonly SemaphoreSlim _scriptLock = new(1, 1);
+    private readonly DispatcherTimer _inactivityTimer;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        _inactivityTimer = new DispatcherTimer
+        {
+            Interval = InactivityTimeout,
+        };
+
+        _inactivityTimer.Tick += InactivityTimer_Tick;
 
         Loaded += MainWindow_Loaded;
         Keyboard.KeyRequested += Keyboard_KeyRequested;
@@ -62,6 +74,9 @@ public partial class MainWindow : Window
                 ReadEmbeddedText("keyboard_bridge.js"));
 
             await Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                ReadEmbeddedText("kiosk_session.js"));
+
+            await Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 ReadEmbeddedText("checkout_flow.js"));
 
             Browser.CoreWebView2.WebMessageReceived +=
@@ -70,7 +85,11 @@ public partial class MainWindow : Window
             Browser.CoreWebView2.NavigationStarting += (_, _) =>
             {
                 _webReady = false;
-                ShowStatus("Carregando e-commerce...", 12);
+
+                ShowStatus(
+                    "Carregando e-commerce...",
+                    12);
+
                 HideKeyboard(
                     animate: false,
                     clearWebFocus: false);
@@ -83,7 +102,10 @@ public partial class MainWindow : Window
                     _webReady = true;
                     Browser.Visibility = Visibility.Visible;
                     StartupError.Visibility = Visibility.Collapsed;
+                    RestartButton.IsEnabled = true;
+
                     HideStatus();
+                    ResetInactivityTimer();
                 }
                 else
                 {
@@ -127,6 +149,7 @@ public partial class MainWindow : Window
     private static string ReadEmbeddedText(string fileName)
     {
         var assembly = Assembly.GetExecutingAssembly();
+
         var resourceName = assembly
             .GetManifestResourceNames()
             .Single(name =>
@@ -139,6 +162,7 @@ public partial class MainWindow : Window
                 $"Recurso {fileName} não encontrado.");
 
         using var reader = new StreamReader(stream);
+
         return reader.ReadToEnd();
     }
 
@@ -153,42 +177,224 @@ public partial class MainWindow : Window
 
             var root = document.RootElement;
 
-            if (!root.TryGetProperty("type", out var type) ||
-                type.GetString() != "keyboard")
+            if (!root.TryGetProperty("type", out var typeElement))
             {
                 return;
             }
 
-            var action =
-                root.TryGetProperty(
-                    "action",
-                    out var actionElement)
-                    ? actionElement.GetString()
-                    : null;
+            var type = typeElement.GetString();
 
-            if (action == "show")
+            if (type == "keyboard")
             {
-                var kind =
-                    root.TryGetProperty(
-                        "kind",
-                        out var kindElement)
-                        ? kindElement.GetString()
-                        : "text";
-
-                Dispatcher.Invoke(
-                    () => ShowKeyboard(kind ?? "text"));
+                HandleKeyboardMessage(root);
+                return;
             }
-            else if (action == "hide")
+
+            if (type == "kiosk")
             {
-                Dispatcher.Invoke(
-                    () => HideKeyboard(
-                        animate: true,
-                        clearWebFocus: false));
+                HandleKioskMessage(root);
+                return;
+            }
+
+            if (type == "lead")
+            {
+                SaveLead(root);
+                ResetInactivityTimer();
             }
         }
         catch
         {
             // Ignore malformed messages from page scripts.
+        }
+    }
+
+    private void HandleKeyboardMessage(JsonElement root)
+    {
+        var action =
+            root.TryGetProperty(
+                "action",
+                out var actionElement)
+                ? actionElement.GetString()
+                : null;
+
+        ResetInactivityTimer();
+
+        if (action == "show")
+        {
+            var kind =
+                root.TryGetProperty(
+                    "kind",
+                    out var kindElement)
+                    ? kindElement.GetString()
+                    : "text";
+
+            Dispatcher.Invoke(
+                () => ShowKeyboard(kind ?? "text"));
+        }
+        else if (action == "hide")
+        {
+            Dispatcher.Invoke(
+                () => HideKeyboard(
+                    animate: true,
+                    clearWebFocus: false));
+        }
+    }
+
+    private void HandleKioskMessage(JsonElement root)
+    {
+        var action =
+            root.TryGetProperty(
+                "action",
+                out var actionElement)
+                ? actionElement.GetString()
+                : null;
+
+        if (action == "activity")
+        {
+            ResetInactivityTimer();
+            return;
+        }
+
+        if (action == "reset-started")
+        {
+            Dispatcher.Invoke(() =>
+            {
+                RestartButton.IsEnabled = false;
+                ShowStatus(
+                    "Reiniciando atendimento...",
+                    30);
+            });
+
+            return;
+        }
+
+        if (action == "reset-complete")
+        {
+            Dispatcher.Invoke(() =>
+            {
+                RestartButton.IsEnabled = true;
+                ResetInactivityTimer();
+            });
+        }
+    }
+
+    private static string CsvEscape(string value)
+    {
+        var safe = value.Replace(""", """");
+        return $""{safe}"";
+    }
+
+    private void SaveLead(JsonElement root)
+    {
+        var name =
+            root.TryGetProperty("name", out var nameElement)
+                ? nameElement.GetString()?.Trim() ?? string.Empty
+                : string.Empty;
+
+        var phone =
+            root.TryGetProperty("phone", out var phoneElement)
+                ? phoneElement.GetString()?.Trim() ?? string.Empty
+                : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(name) ||
+            string.IsNullOrWhiteSpace(phone))
+        {
+            return;
+        }
+
+        try
+        {
+            var folder = Path.Combine(
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.LocalApplicationData),
+                "GrupoHernandes",
+                "VirtualHern");
+
+            Directory.CreateDirectory(folder);
+
+            var filePath =
+                Path.Combine(folder, "leads.csv");
+
+            if (!File.Exists(filePath))
+            {
+                File.WriteAllText(
+                    filePath,
+                    "data_hora,nome,telefone" +
+                    Environment.NewLine,
+                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            }
+
+            var line = string.Join(
+                ",",
+                CsvEscape(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")),
+                CsvEscape(name),
+                CsvEscape(phone));
+
+            File.AppendAllText(
+                filePath,
+                line + Environment.NewLine,
+                Encoding.UTF8);
+        }
+        catch
+        {
+            // The purchase flow must never stop because lead logging failed.
+        }
+    }
+
+    private void ResetInactivityTimer()
+    {
+        _inactivityTimer.Stop();
+        _inactivityTimer.Start();
+    }
+
+    private async void InactivityTimer_Tick(
+        object? sender,
+        EventArgs e)
+    {
+        _inactivityTimer.Stop();
+
+        await ResetCheckoutAsync("inactivity");
+    }
+
+    private async Task ResetCheckoutAsync(string reason)
+    {
+        RestartButton.IsEnabled = false;
+
+        ShowStatus(
+            reason == "inactivity"
+                ? "Atendimento encerrado por inatividade..."
+                : "Reiniciando atendimento...",
+            25);
+
+        HideKeyboard(
+            animate: false,
+            clearWebFocus: false);
+
+        if (!_webReady ||
+            Browser.CoreWebView2 is null)
+        {
+            Browser.Source = new Uri(HomeUrl);
+            RestartButton.IsEnabled = true;
+            return;
+        }
+
+        var reasonJson =
+            JsonSerializer.Serialize(reason);
+
+        await ExecuteScriptSerialAsync(
+            $"window.__hernandesKioskReset?.({reasonJson});");
+
+        // The JS reset can navigate through the site's cart page while it
+        // removes items. If the site does not expose a recognizable cart UI,
+        // do not leave the kiosk stuck in a reset state forever.
+        await Task.Delay(6500);
+
+        if (!RestartButton.IsEnabled &&
+            Browser.CoreWebView2 is not null)
+        {
+            Browser.CoreWebView2.Navigate(HomeUrl);
+            RestartButton.IsEnabled = true;
+            ResetInactivityTimer();
         }
     }
 
@@ -335,8 +541,13 @@ public partial class MainWindow : Window
         object? sender,
         VirtualKeyEventArgs e)
     {
-        var action = JsonSerializer.Serialize(e.Action);
-        var text = JsonSerializer.Serialize(e.Text);
+        ResetInactivityTimer();
+
+        var action =
+            JsonSerializer.Serialize(e.Action);
+
+        var text =
+            JsonSerializer.Serialize(e.Text);
 
         await ExecuteScriptSerialAsync(
             $"window.__hernandesType?.({action}, {text});");
@@ -346,6 +557,8 @@ public partial class MainWindow : Window
         object? sender,
         EventArgs e)
     {
+        ResetInactivityTimer();
+
         HideKeyboard(
             animate: true,
             clearWebFocus: true);
@@ -380,19 +593,23 @@ public partial class MainWindow : Window
         double progress)
     {
         StatusText.Text = text;
+        LoadProgress.Visibility = Visibility.Visible;
         LoadProgress.Value = progress;
         StatusBar.Visibility = Visibility.Visible;
     }
 
     private void HideStatus()
     {
-        LoadProgress.Value = 100;
-        StatusBar.Visibility = Visibility.Collapsed;
+        StatusText.Text = "Pronto para atendimento";
+        LoadProgress.Value = 0;
+        LoadProgress.Visibility = Visibility.Collapsed;
+        StatusBar.Visibility = Visibility.Visible;
     }
 
     private void ShowNavigationError(string text)
     {
         _webReady = false;
+        _inactivityTimer.Stop();
 
         HideKeyboard(
             animate: false,
@@ -401,7 +618,12 @@ public partial class MainWindow : Window
         Browser.Visibility = Visibility.Collapsed;
         ErrorText.Text = text;
         StartupError.Visibility = Visibility.Visible;
-        StatusBar.Visibility = Visibility.Collapsed;
+
+        StatusText.Text = "Erro no e-commerce";
+        LoadProgress.Visibility = Visibility.Collapsed;
+        StatusBar.Visibility = Visibility.Visible;
+
+        RestartButton.IsEnabled = true;
     }
 
     private async void RetryButton_Click(
@@ -420,10 +642,20 @@ public partial class MainWindow : Window
         Browser.CoreWebView2.Navigate(HomeUrl);
     }
 
+    private async void RestartButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ResetInactivityTimer();
+        await ResetCheckoutAsync("manual");
+    }
+
     private void Window_KeyDown(
         object sender,
         KeyEventArgs e)
     {
+        ResetInactivityTimer();
+
         var modifiers =
             System.Windows.Input.Keyboard.Modifiers;
 
