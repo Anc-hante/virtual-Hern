@@ -16,39 +16,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Python 3.14
-        uses: actions/setup-python@v5
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
         with:
-          python-version: "3.14"
-          cache: pip
+          dotnet-version: "10.0.x"
 
-      - name: Install dependencies
+      - name: Restore
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          dotnet restore "src/HernandesCheckout/HernandesCheckout.csproj"
 
-      - name: Validate Python
+      - name: Build
         shell: pwsh
         run: |
-          python -m compileall -q src
+          dotnet build "src/HernandesCheckout/HernandesCheckout.csproj" -c Release --no-restore
 
-      - name: Build single executable
-        shell: cmd
-        run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name HernandesCheckout --paths "src" --add-data "src\resources;resources" --collect-all PySide6.QtWebEngineCore --collect-all PySide6.QtWebEngineWidgets "src\main.py"
-
-      - name: Verify executable
+      - name: Publish single EXE
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist\HernandesCheckout.exe")) {
+          if (Test-Path "dist") {
+            Remove-Item "dist" -Recurse -Force
+          }
+
+          dotnet publish "src/HernandesCheckout/HernandesCheckout.csproj" `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -o dist `
+            /p:PublishSingleFile=true `
+            /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:EnableCompressionInSingleFile=true
+
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/HernandesCheckout.exe")) {
             throw "HernandesCheckout.exe was not generated"
           }
-          Get-Item "dist\HernandesCheckout.exe" | Format-List Name,Length,LastWriteTime
+
+          $files = Get-ChildItem "dist" -File
+          $files | Format-Table Name,Length
+
+          if ($files.Count -ne 1) {
+            Write-Warning "Publish produced more than one file. The EXE remains the supported launcher."
+          }
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: HernandesCheckout-Windows
+          name: HernandesCheckout-WebView2-Windows
           path: dist/HernandesCheckout.exe
           if-no-files-found: error
