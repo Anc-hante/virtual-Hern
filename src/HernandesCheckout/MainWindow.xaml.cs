@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
@@ -364,8 +363,8 @@ public partial class MainWindow : Window
         object sender,
         KeyEventArgs e)
     {
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
-            Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) &&
+        if (System.Windows.Input.Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
+            System.Windows.Input.Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) &&
             e.Key == Key.F12)
         {
             _allowClose = true;
