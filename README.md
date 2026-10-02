@@ -102,3 +102,38 @@ O ciclo é reiniciado quando:
 Leads informados no fluxo **Não** são registrados em:
 
 `%LOCALAPPDATA%\GrupoHernandes\VirtualHern\leads.csv`
+
+
+## Integração HernandesDash
+
+O checkout envia automaticamente eventos do totem para:
+
+`https://hernandesvpn.dyndns.org/api/ecommerce/totem/events`
+
+Eventos enviados:
+
+- atendimento iniciado;
+- cliente com cadastro;
+- novo contato (nome e telefone);
+- produto adicionado;
+- pedido concluído, com número/valor/itens quando disponíveis;
+- reinício manual;
+- reinício por inatividade.
+
+Cada equipamento recebe um ID persistente salvo em:
+
+`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\totem-device-id.txt`
+
+Se a API ou internet ficar indisponível, os eventos ficam na fila:
+
+`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\totem-events-pending.jsonl`
+
+e são reenviados automaticamente quando a conexão voltar.
+
+A URL pode ser sobrescrita com a variável de ambiente:
+
+`HERNANDES_TOTEM_API_URL`
+
+Se o backend estiver configurado com `ECOMMERCE_TOTEM_API_TOKEN`, configure o mesmo valor no Windows em:
+
+`HERNANDES_TOTEM_API_TOKEN`
