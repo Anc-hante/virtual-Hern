@@ -1,35 +1,20 @@
 import os
 import sys
 
-COMPATIBILITY_MODE = "--compatibility" in sys.argv
-
-# Configure graphics before importing PySide6.
-# Normal mode uses Windows D3D11/ANGLE for smoother scrolling and animation.
-# If a device renders a black WebEngine surface, the app automatically
-# relaunches once in software compatibility mode.
+# Stable graphics mode for the checkout AIO.
+# The device rendered QtWebEngine correctly in software mode, while
+# D3D11/ANGLE reproduced a black WebEngine surface. Keep the browser on
+# software rendering by default and optimize the UI around it.
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
-
-if COMPATIBILITY_MODE:
-    os.environ["QT_OPENGL"] = "software"
-    os.environ["QT_QUICK_BACKEND"] = "software"
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
-        "--disable-gpu "
-        "--disable-gpu-compositing "
-        "--disable-features=Vulkan"
-    )
-else:
-    os.environ["QT_OPENGL"] = "angle"
-    os.environ.pop("QT_QUICK_BACKEND", None)
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
-        "--use-angle=d3d11 "
-        "--disable-features=Vulkan"
-    )
+os.environ["QT_OPENGL"] = "software"
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+    "--disable-gpu "
+    "--disable-features=Vulkan"
+)
 
 from PySide6.QtCore import (
     QEasingCurve,
-    QProcess,
     QPropertyAnimation,
-    QTimer,
     Qt,
 )
 from PySide6.QtGui import QCloseEvent, QFont
@@ -60,8 +45,6 @@ class MainWindow(QMainWindow):
         self.keyboard_visible = False
         self.animation = None
         self.allow_close = False
-        self.compatibility_mode = COMPATIBILITY_MODE
-        self.black_surface_checked = False
 
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(720, 1100)
@@ -110,80 +93,11 @@ class MainWindow(QMainWindow):
         if ok:
             self.status.setText("Hernandes Checkout")
             self.status.setFixedHeight(2)
-
-            if (
-                not self.compatibility_mode
-                and not self.black_surface_checked
-            ):
-                self.black_surface_checked = True
-                QTimer.singleShot(
-                    2200,
-                    self.check_black_webview,
-                )
         else:
             self.status.setText(
                 "Nao foi possivel carregar o e-commerce - pressione F5 para tentar novamente"
             )
             self.status.setFixedHeight(52)
-
-    def check_black_webview(self):
-        image = self.browser.grab().toImage()
-        if image.isNull() or image.width() < 50 or image.height() < 50:
-            return
-
-        dark = 0
-        total = 0
-        columns = 10
-        rows = 14
-
-        for row in range(1, rows):
-            y = int(image.height() * row / rows)
-            for column in range(1, columns):
-                x = int(image.width() * column / columns)
-                color = image.pixelColor(x, y)
-                total += 1
-                if (
-                    color.red() < 18
-                    and color.green() < 18
-                    and color.blue() < 18
-                ):
-                    dark += 1
-
-        if total and (dark / total) > 0.92:
-            self.restart_in_compatibility_mode()
-
-    def restart_in_compatibility_mode(self):
-        self.status.setFixedHeight(52)
-        self.status.setText(
-            "Ajustando compatibilidade grafica..."
-        )
-
-        if getattr(sys, "frozen", False):
-            program = sys.executable
-            arguments = [
-                arg
-                for arg in sys.argv[1:]
-                if arg != "--compatibility"
-            ]
-            arguments.append("--compatibility")
-        else:
-            program = sys.executable
-            arguments = [
-                sys.argv[0],
-                *[
-                    arg
-                    for arg in sys.argv[1:]
-                    if arg != "--compatibility"
-                ],
-                "--compatibility",
-            ]
-
-        result = QProcess.startDetached(program, arguments)
-        started = result[0] if isinstance(result, tuple) else bool(result)
-
-        if started:
-            self.allow_close = True
-            QTimer.singleShot(150, self.close)
 
     def apply_styles(self):
         self.setStyleSheet("""
@@ -358,11 +272,10 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    if COMPATIBILITY_MODE:
-        QApplication.setAttribute(
-            Qt.ApplicationAttribute.AA_UseSoftwareOpenGL,
-            True,
-        )
+    QApplication.setAttribute(
+        Qt.ApplicationAttribute.AA_UseSoftwareOpenGL,
+        True,
+    )
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
