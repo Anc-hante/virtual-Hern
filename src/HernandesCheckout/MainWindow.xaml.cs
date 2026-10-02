@@ -21,8 +21,12 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _keyboardVisible;
     private bool _webReady;
+    private bool _sessionStartedSent;
+    private bool _startNewSessionOnNextHome;
+    private string _totemSessionId = Guid.NewGuid().ToString("N");
     private readonly SemaphoreSlim _scriptLock = new(1, 1);
     private readonly DispatcherTimer _inactivityTimer;
+    private readonly TotemApiClient _totemApi = new();
 
     public MainWindow()
     {
@@ -106,6 +110,7 @@ public partial class MainWindow : Window
 
                     HideStatus();
                     ResetInactivityTimer();
+                    _ = OnNavigationReadyAsync();
                 }
                 else
                 {
@@ -200,6 +205,13 @@ public partial class MainWindow : Window
             {
                 SaveLead(root);
                 ResetInactivityTimer();
+                return;
+            }
+
+            if (type == "totem_event")
+            {
+                var eventMessage = root.Clone();
+                _ = HandleTotemEventAsync(eventMessage);
             }
         }
         catch
@@ -276,6 +288,87 @@ public partial class MainWindow : Window
                 ResetInactivityTimer();
             });
         }
+    }
+
+    private async Task HandleTotemEventAsync(
+        JsonElement message)
+    {
+        try
+        {
+            await _totemApi.SendWebEventAsync(
+                message,
+                _totemSessionId);
+
+            if (message.TryGetProperty(
+                    "event_type",
+                    out var eventTypeElement) &&
+                eventTypeElement.GetString() == "order_completed")
+            {
+                _startNewSessionOnNextHome = true;
+            }
+        }
+        catch
+        {
+            // The API client already persists failed sends locally.
+        }
+    }
+
+    private async Task OnNavigationReadyAsync()
+    {
+        try
+        {
+            await _totemApi.FlushPendingAsync();
+
+            if (_startNewSessionOnNextHome &&
+                IsHomeUrl(Browser.Source))
+            {
+                _totemSessionId =
+                    Guid.NewGuid().ToString("N");
+
+                _sessionStartedSent = false;
+                _startNewSessionOnNextHome = false;
+            }
+
+            if (_sessionStartedSent)
+            {
+                return;
+            }
+
+            _sessionStartedSent = true;
+
+            await _totemApi.SendSimpleEventAsync(
+                "session_started",
+                _totemSessionId,
+                new Dictionary<string, object?>
+                {
+                    ["url"] = Browser.Source?.ToString(),
+                    ["app_version"] =
+                        Assembly.GetExecutingAssembly()
+                            .GetName()
+                            .Version
+                            ?.ToString(),
+                });
+        }
+        catch
+        {
+            _sessionStartedSent = false;
+        }
+    }
+
+    private static bool IsHomeUrl(Uri? uri)
+    {
+        if (uri is null)
+        {
+            return false;
+        }
+
+        return string.Equals(
+                   uri.Host,
+                   "www.grupohernandes.com.br",
+                   StringComparison.OrdinalIgnoreCase)
+               &&
+               (uri.AbsolutePath == "/" ||
+                string.IsNullOrWhiteSpace(uri.AbsolutePath));
     }
 
     private static string CsvEscape(string value)
@@ -369,6 +462,18 @@ public partial class MainWindow : Window
         HideKeyboard(
             animate: false,
             clearWebFocus: false);
+
+        await _totemApi.SendSimpleEventAsync(
+            reason == "inactivity"
+                ? "inactivity_reset"
+                : "session_reset",
+            _totemSessionId,
+            new Dictionary<string, object?>
+            {
+                ["reason"] = reason,
+            });
+
+        _startNewSessionOnNextHome = true;
 
         if (!_webReady ||
             Browser.CoreWebView2 is null)
