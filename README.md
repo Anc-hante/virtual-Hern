@@ -1,78 +1,84 @@
 # Virtual Hern
 
-Checkout touch da Hernandes para Windows, desenvolvido em Python com PySide6 + QtWebEngine e pensado para monitor vertical.
+Checkout touch da Hernandes para Windows, otimizado para monitor vertical.
 
-## Entrega final
+## Tecnologia atual
 
-O projeto gera **um único arquivo executável**:
+A versão principal usa:
 
-```text
-dist\HernandesCheckout.exe
-```
+- C# / .NET 10
+- WPF
+- Microsoft Edge WebView2
+- teclado virtual próprio
+- sessão persistente do e-commerce
 
-O cliente não precisa levar `config.json`, JavaScript, DLLs ou outras pastas ao lado do programa. Os recursos necessários são empacotados dentro do EXE.
+A versão antiga em Python/Qt foi preservada na branch `legacy-python`.
 
-## Funcionamento
+## Por que WebView2
 
-- Abre https://www.grupohernandes.com.br/ em Chromium embutido.
-- Opera em tela cheia no modo checkout.
-- Mantém cookies, local storage e sessão entre reinícios.
-- Detecta automaticamente quando um campo precisa de digitação.
-- O teclado sobe e desce suavemente.
-- O e-commerce redimensiona em vez de ficar escondido atrás do teclado.
-- Teclado específico para texto, e-mail e números.
-- Interface otimizada para tela vertical.
-- `F5` recarrega o e-commerce.
-- `Ctrl + Shift + F12` encerra o modo kiosk.
+O protótipo em QtWebEngine precisava rodar por software no AIO para evitar tela preta, o que deixava navegação e animações menos fluidas.
+
+A versão atual usa o motor do Microsoft Edge integrado ao Windows, mantendo aceleração gráfica nativa.
+
+## Recursos
+
+- e-commerce Hernandes em tela cheia;
+- tela vertical / portrait;
+- teclado virtual automático;
+- linha numérica completa;
+- layouts de texto, e-mail e numérico;
+- teclado abre somente em campos digitáveis;
+- login, cookies e armazenamento do site persistentes;
+- perfil WebView2 salvo em `%LOCALAPPDATA%\GrupoHernandes\VirtualHern\WebView2`;
+- fluxo pós-compra na página `/confirmacao`;
+- após o OK do pedido concluído aparece **Voltar ao início**;
+- `F5` recarrega;
+- `Ctrl + Shift + F12` fecha o kiosk.
 
 ## Estrutura
 
 ```text
 virtual-Hern/
 ├── src/
-│   ├── main.py
-│   ├── browser.py
-│   ├── keyboard.py
-│   ├── app_config.py
-│   └── resources/
-│       └── keyboard_bridge.js
+│   └── HernandesCheckout/
+│       ├── HernandesCheckout.csproj
+│       ├── App.xaml
+│       ├── App.xaml.cs
+│       ├── MainWindow.xaml
+│       ├── MainWindow.xaml.cs
+│       ├── VirtualKeyboard.xaml
+│       ├── VirtualKeyboard.xaml.cs
+│       └── Resources/
+│           ├── keyboard_bridge.js
+│           └── checkout_flow.js
 ├── build_windows.bat
-├── requirements.txt
-├── .gitignore
-└── README.md
+└── .github/workflows/build-windows.yml
 ```
 
-Os arquivos em `src/` existem apenas para desenvolvimento. Depois do build, a distribuição é somente `HernandesCheckout.exe`.
+## Gerar o EXE
 
-## Gerar no Windows
-
-Recomendado: Python 3.14 64 bits.
-
-Abra a pasta do projeto e execute:
+No Windows, execute:
 
 ```bat
 build_windows.bat
 ```
 
-O script cria o ambiente virtual, instala as dependências e usa PyInstaller em modo `--onefile`.
+Se o .NET SDK não estiver disponível, o script baixa uma cópia local automaticamente.
 
-Ao terminar, use somente:
+Ao terminar:
 
 ```text
 dist\HernandesCheckout.exe
 ```
 
-## Teste sem gerar EXE
+O publish é self-contained e gera o launcher em arquivo único.
 
-Para desenvolvimento:
+## GitHub Actions
 
-```bat
-py -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-py src\main.py --windowed
-```
+Cada push na branch `main` gera e valida uma versão Windows. O artefato é publicado como:
 
-## Sessão do e-commerce
+`HernandesCheckout-WebView2-Windows`
 
-Cookies e dados da sessão não ficam ao lado do EXE. O QtWebEngine grava o perfil persistente na pasta de dados do aplicativo do usuário do Windows, permitindo manter o login entre execuções.
+## Primeiro login
+
+A primeira execução da versão WebView2 usa um novo perfil de navegador. Faça login uma vez. Nas próximas execuções, a sessão fica salva no perfil persistente.
