@@ -1,6 +1,14 @@
+.dotnet/
+.vs/
+bin/
+obj/
+**/bin/
+**/obj/
+dist/
+
+# Legacy Python branch/worktree artifacts
 .venv/
 __pycache__/
 *.pyc
 build/
-dist/
 *.spec
