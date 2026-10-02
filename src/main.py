@@ -1,9 +1,28 @@
 import os
 import sys
 
+# Configure Qt/Chromium before importing any PySide6 module.
+# This avoids black WebEngine surfaces on Windows machines/drivers that
+# have trouble with Chromium GPU compositing.
+os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+os.environ.setdefault("QT_OPENGL", "software")
+os.environ.setdefault("QT_QUICK_BACKEND", "software")
+os.environ.setdefault(
+    "QTWEBENGINE_CHROMIUM_FLAGS",
+    "--disable-gpu --disable-gpu-compositing --disable-features=Vulkan",
+)
+
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtGui import QCloseEvent, QFont
-from PySide6.QtWidgets import QApplication, QMainWindow, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app_config import (
     ANIMATION_MS,
@@ -27,12 +46,24 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(720, 1100)
 
+        self.status = QLabel("Carregando Hernandes Checkout...")
+        self.status.setObjectName("startupStatus")
+        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status.setFixedHeight(44)
+
         self.browser = CheckoutBrowser(DEFAULT_URL)
         self.browser.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
         self.browser.keyboard_event.connect(self.on_keyboard_event)
+        self.browser.loadStarted.connect(
+            lambda: self.status.setText("Carregando e-commerce...")
+        )
+        self.browser.loadProgress.connect(
+            lambda p: self.status.setText(f"Carregando e-commerce... {p}%")
+        )
+        self.browser.loadFinished.connect(self.on_load_finished)
 
         self.keyboard = KeyboardPanel()
         self.keyboard.request_key.connect(self.browser.send_virtual_key)
@@ -42,16 +73,34 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(shell)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        layout.addWidget(self.status, 0)
         layout.addWidget(self.browser, 1)
         layout.addWidget(self.keyboard, 0)
         self.setCentralWidget(shell)
 
         self.apply_styles()
 
+    def on_load_finished(self, ok):
+        if ok:
+            self.status.setText("Hernandes Checkout")
+            self.status.setFixedHeight(2)
+        else:
+            self.status.setText(
+                "Nao foi possivel carregar o e-commerce - pressione F5 para tentar novamente"
+            )
+            self.status.setFixedHeight(52)
+
     def apply_styles(self):
         self.setStyleSheet("""
             QMainWindow {
-                background: #f7f7f8;
+                background: #ffffff;
+            }
+            QLabel#startupStatus {
+                background: #ffffff;
+                color: #7f1d1d;
+                font-size: 14px;
+                font-weight: 700;
+                border-bottom: 1px solid #e5e7eb;
             }
             QWidget#keyboardPanel {
                 background: #ffffff;
@@ -161,6 +210,7 @@ class MainWindow(QMainWindow):
             return
 
         if event.key() == Qt.Key.Key_F5:
+            self.status.setFixedHeight(44)
             self.browser.reload()
             return
 
@@ -178,7 +228,10 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+    QApplication.setAttribute(
+        Qt.ApplicationAttribute.AA_UseSoftwareOpenGL,
+        True,
+    )
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
