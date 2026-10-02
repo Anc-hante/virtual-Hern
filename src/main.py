@@ -1,24 +1,42 @@
 import os
 import sys
 
-# Configure Qt/Chromium before importing any PySide6 module.
-# This avoids black WebEngine surfaces on Windows machines/drivers that
-# have trouble with Chromium GPU compositing.
-os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
-os.environ.setdefault("QT_OPENGL", "software")
-os.environ.setdefault("QT_QUICK_BACKEND", "software")
-os.environ.setdefault(
-    "QTWEBENGINE_CHROMIUM_FLAGS",
-    "--disable-gpu --disable-gpu-compositing --disable-features=Vulkan",
-)
+COMPATIBILITY_MODE = "--compatibility" in sys.argv
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
+# Configure graphics before importing PySide6.
+# Normal mode uses Windows D3D11/ANGLE for smoother scrolling and animation.
+# If a device renders a black WebEngine surface, the app automatically
+# relaunches once in software compatibility mode.
+os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+
+if COMPATIBILITY_MODE:
+    os.environ["QT_OPENGL"] = "software"
+    os.environ["QT_QUICK_BACKEND"] = "software"
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+        "--disable-gpu "
+        "--disable-gpu-compositing "
+        "--disable-features=Vulkan"
+    )
+else:
+    os.environ["QT_OPENGL"] = "angle"
+    os.environ.pop("QT_QUICK_BACKEND", None)
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+        "--use-angle=d3d11 "
+        "--disable-features=Vulkan"
+    )
+
+from PySide6.QtCore import (
+    QEasingCurve,
+    QProcess,
+    QPropertyAnimation,
+    QTimer,
+    Qt,
+)
 from PySide6.QtGui import QCloseEvent, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
     QMainWindow,
-    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -42,6 +60,8 @@ class MainWindow(QMainWindow):
         self.keyboard_visible = False
         self.animation = None
         self.allow_close = False
+        self.compatibility_mode = COMPATIBILITY_MODE
+        self.black_surface_checked = False
 
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(720, 1100)
@@ -57,12 +77,8 @@ class MainWindow(QMainWindow):
             QSizePolicy.Policy.Expanding,
         )
         self.browser.keyboard_event.connect(self.on_keyboard_event)
-        self.browser.loadStarted.connect(
-            lambda: self.status.setText("Carregando e-commerce...")
-        )
-        self.browser.loadProgress.connect(
-            lambda p: self.status.setText(f"Carregando e-commerce... {p}%")
-        )
+        self.browser.loadStarted.connect(self.on_load_started)
+        self.browser.loadProgress.connect(self.on_load_progress)
         self.browser.loadFinished.connect(self.on_load_finished)
 
         self.keyboard = KeyboardPanel()
@@ -80,21 +96,98 @@ class MainWindow(QMainWindow):
 
         self.apply_styles()
 
+    def on_load_started(self):
+        self.status.setFixedHeight(44)
+        self.status.setText("Carregando e-commerce...")
+
+    def on_load_progress(self, progress):
+        if self.status.height() > 2:
+            self.status.setText(
+                f"Carregando e-commerce... {progress}%"
+            )
+
     def on_load_finished(self, ok):
         if ok:
             self.status.setText("Hernandes Checkout")
             self.status.setFixedHeight(2)
+
+            if (
+                not self.compatibility_mode
+                and not self.black_surface_checked
+            ):
+                self.black_surface_checked = True
+                QTimer.singleShot(
+                    2200,
+                    self.check_black_webview,
+                )
         else:
             self.status.setText(
                 "Nao foi possivel carregar o e-commerce - pressione F5 para tentar novamente"
             )
             self.status.setFixedHeight(52)
 
+    def check_black_webview(self):
+        image = self.browser.grab().toImage()
+        if image.isNull() or image.width() < 50 or image.height() < 50:
+            return
+
+        dark = 0
+        total = 0
+        columns = 10
+        rows = 14
+
+        for row in range(1, rows):
+            y = int(image.height() * row / rows)
+            for column in range(1, columns):
+                x = int(image.width() * column / columns)
+                color = image.pixelColor(x, y)
+                total += 1
+                if (
+                    color.red() < 18
+                    and color.green() < 18
+                    and color.blue() < 18
+                ):
+                    dark += 1
+
+        if total and (dark / total) > 0.92:
+            self.restart_in_compatibility_mode()
+
+    def restart_in_compatibility_mode(self):
+        self.status.setFixedHeight(52)
+        self.status.setText(
+            "Ajustando compatibilidade grafica..."
+        )
+
+        if getattr(sys, "frozen", False):
+            program = sys.executable
+            arguments = [
+                arg
+                for arg in sys.argv[1:]
+                if arg != "--compatibility"
+            ]
+            arguments.append("--compatibility")
+        else:
+            program = sys.executable
+            arguments = [
+                sys.argv[0],
+                *[
+                    arg
+                    for arg in sys.argv[1:]
+                    if arg != "--compatibility"
+                ],
+                "--compatibility",
+            ]
+
+        if QProcess.startDetached(program, arguments):
+            self.allow_close = True
+            QTimer.singleShot(150, self.close)
+
     def apply_styles(self):
         self.setStyleSheet("""
             QMainWindow {
                 background: #ffffff;
             }
+
             QLabel#startupStatus {
                 background: #ffffff;
                 color: #7f1d1d;
@@ -102,58 +195,93 @@ class MainWindow(QMainWindow):
                 font-weight: 700;
                 border-bottom: 1px solid #e5e7eb;
             }
+
             QWidget#keyboardPanel {
-                background: #ffffff;
-                border-top: 1px solid #e5e7eb;
+                background: #f3f4f6;
+                border-top: 3px solid #a7191f;
             }
+
+            QWidget#keysHost,
+            QWidget#keyRow {
+                background: transparent;
+            }
+
             QLabel#keyboardTitle {
-                color: #9d171b;
-                font-size: 16px;
+                color: #7f1d1d;
+                font-size: 13px;
                 font-weight: 800;
             }
-            QLabel#keyboardHint {
-                color: #6b7280;
-                font-size: 12px;
-            }
-            QPushButton {
-                border: 1px solid #d9dde4;
+
+            QWidget#keyboardPanel QPushButton {
+                min-width: 0;
                 border-radius: 13px;
+                border: 1px solid #d9dee5;
                 background: #ffffff;
-                color: #1f2937;
-                font-size: 20px;
+                color: #242a31;
+                font-size: 18px;
                 font-weight: 700;
-                padding: 8px 10px;
+                padding: 6px 6px;
             }
-            QPushButton:pressed {
-                background: #eceef2;
+
+            QWidget#keyboardPanel QPushButton:pressed {
+                background: #dfe3e8;
+                border-color: #c9cfd7;
             }
+
+            QPushButton#numberKey {
+                background: #e9edf2;
+                color: #303741;
+                border-color: #d6dce4;
+            }
+
+            QPushButton#symbolKey,
+            QPushButton#accentKey {
+                background: #e9edf2;
+                color: #4b5563;
+                border-color: #d6dce4;
+            }
+
+            QPushButton#spaceKey {
+                background: #ffffff;
+                color: #4b5563;
+            }
+
+            QPushButton#dangerKey {
+                background: #e2e5e9;
+                color: #343a40;
+                border-color: #d1d6dc;
+            }
+
             QPushButton#primaryKey {
                 background: #a7191f;
                 color: #ffffff;
                 border-color: #a7191f;
+                font-weight: 800;
             }
-            QPushButton#dangerKey {
-                background: #fff3f3;
-                color: #a7191f;
-                border-color: #f0c8ca;
+
+            QPushButton#primaryKey:pressed {
+                background: #851419;
+                border-color: #851419;
             }
-            QPushButton#accentKey,
-            QPushButton#spaceKey,
+
             QPushButton#closeKey {
-                background: #f7f7f8;
-                color: #4b5563;
+                background: transparent;
+                color: #6b7280;
+                border: 0;
+                border-radius: 17px;
+                font-size: 28px;
+                font-weight: 400;
+                padding: 0;
             }
-            QPushButton#closeKey {
-                min-height: 34px;
-                max-height: 34px;
-                padding: 0 14px;
-                font-size: 13px;
+
+            QPushButton#closeKey:pressed {
+                background: #e5e7eb;
             }
         """)
 
     def target_keyboard_height(self):
         height = int(self.height() * KEYBOARD_HEIGHT_RATIO)
-        return max(390, min(height, 720))
+        return max(410, min(height, 720))
 
     def animate_keyboard(self, target):
         if self.animation is not None:
@@ -210,7 +338,6 @@ class MainWindow(QMainWindow):
             return
 
         if event.key() == Qt.Key.Key_F5:
-            self.status.setFixedHeight(44)
             self.browser.reload()
             return
 
@@ -228,10 +355,11 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    QApplication.setAttribute(
-        Qt.ApplicationAttribute.AA_UseSoftwareOpenGL,
-        True,
-    )
+    if COMPATIBILITY_MODE:
+        QApplication.setAttribute(
+            Qt.ApplicationAttribute.AA_UseSoftwareOpenGL,
+            True,
+        )
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
