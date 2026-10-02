@@ -71,10 +71,21 @@
     if (!onConfirmationPage()) return;
     if (document.getElementById('__hernandes-return-home')) return;
 
+    // The completed order closes the current kiosk customer cycle.
+    // The next customer's first add-to-cart action must identify them again.
+    try {
+      window.__hernandesResetCycle?.();
+    } catch (_) {}
+
     try {
       window.chrome?.webview?.postMessage({
         type: 'keyboard',
         action: 'hide'
+      });
+
+      window.chrome?.webview?.postMessage({
+        type: 'kiosk',
+        action: 'activity'
       });
     } catch (_) {}
 
