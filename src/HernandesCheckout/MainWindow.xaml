@@ -10,19 +10,19 @@
         Background="White"
         KeyDown="Window_KeyDown"
         Closing="Window_Closing">
-    <Grid x:Name="Root" ClipToBounds="True">
-        <wv2:WebView2 x:Name="Browser"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch"
-                      DefaultBackgroundColor="White"/>
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
         <Border x:Name="StatusBar"
+                Grid.Row="0"
                 Height="46"
-                VerticalAlignment="Top"
                 Background="White"
                 BorderBrush="#E5E7EB"
-                BorderThickness="0,0,0,1"
-                Panel.ZIndex="20">
+                BorderThickness="0,0,0,1">
             <Grid>
                 <ProgressBar x:Name="LoadProgress"
                              Height="3"
@@ -44,51 +44,53 @@
             </Grid>
         </Border>
 
-        <Border x:Name="StartupError"
-                Width="620"
-                MaxWidth="86%"
-                Padding="32"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="White"
-                BorderBrush="#E5E7EB"
-                BorderThickness="1"
-                CornerRadius="24"
-                Visibility="Collapsed"
-                Panel.ZIndex="40">
-            <StackPanel>
-                <TextBlock Text="Não foi possível abrir o checkout"
-                           FontFamily="Segoe UI Variable Display, Segoe UI"
-                           FontWeight="Bold"
-                           FontSize="28"
-                           Foreground="#20242A"
-                           TextAlignment="Center"/>
+        <Grid x:Name="ContentHost"
+              Grid.Row="1"
+              Background="White">
+            <wv2:WebView2 x:Name="Browser"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          DefaultBackgroundColor="White"/>
 
-                <TextBlock x:Name="ErrorText"
-                           Margin="0,12,0,22"
-                           FontSize="16"
-                           Foreground="#667085"
-                           TextWrapping="Wrap"
-                           TextAlignment="Center"/>
+            <Border x:Name="StartupError"
+                    Width="620"
+                    Padding="32"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="White"
+                    BorderBrush="#E5E7EB"
+                    BorderThickness="1"
+                    CornerRadius="24"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="Não foi possível abrir o checkout"
+                               FontFamily="Segoe UI Variable Display, Segoe UI"
+                               FontWeight="Bold"
+                               FontSize="28"
+                               Foreground="#20242A"
+                               TextAlignment="Center"/>
 
-                <Button Height="58"
-                        Content="Tentar novamente"
-                        Style="{StaticResource PrimaryKeyStyle}"
-                        Click="RetryButton_Click"/>
-            </StackPanel>
-        </Border>
+                    <TextBlock x:Name="ErrorText"
+                               Margin="0,12,0,22"
+                               FontSize="16"
+                               Foreground="#667085"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"/>
+
+                    <Button Height="58"
+                            Content="Tentar novamente"
+                            Style="{StaticResource PrimaryKeyStyle}"
+                            Click="RetryButton_Click"/>
+                </StackPanel>
+            </Border>
+        </Grid>
 
         <Border x:Name="KeyboardContainer"
-                Height="458"
-                VerticalAlignment="Bottom"
+                Grid.Row="2"
+                Height="0"
                 Background="Transparent"
                 Opacity="0"
-                IsHitTestVisible="False"
-                Panel.ZIndex="30">
-            <Border.RenderTransform>
-                <TranslateTransform x:Name="KeyboardTranslate" Y="500"/>
-            </Border.RenderTransform>
-
+                IsHitTestVisible="False">
             <local:VirtualKeyboard x:Name="Keyboard"/>
         </Border>
     </Grid>
