@@ -334,7 +334,10 @@
     confirm.dataset.hernandesReturnBound = '1';
 
     confirm.addEventListener('click', () => {
-      window.setTimeout(showReturnHome, 180);
+      // Show the kiosk completion screen in the same click turn.
+      // Waiting until after SweetAlert closes can lose this callback
+      // when the page removes/replaces the modal DOM.
+      showReturnHome();
     }, { once: true });
   };
 
@@ -356,7 +359,8 @@
       isSuccessPopup(popup) &&
       onConfirmationPage()
     ) {
-      window.setTimeout(showReturnHome, 180);
+      // Capture phase runs before SweetAlert removes the popup.
+      showReturnHome();
     }
   }, true);
 
