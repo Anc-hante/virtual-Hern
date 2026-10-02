@@ -21,6 +21,119 @@
     );
   };
 
+  const parseMoney = (value) => {
+    const normalized = String(value || '')
+      .replace(/[^0-9,.-]/g, '')
+      .replace(/\./g, '')
+      .replace(',', '.');
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const extractOrderData = () => {
+    const bodyText =
+      (document.body?.innerText || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const orderMatch =
+      bodyText.match(/Pedido\s*#?\s*(\d{5,})/i);
+
+    let amount = null;
+
+    const moneyElements = [
+      ...document.querySelectorAll(
+        '[class*="total" i], [id*="total" i], td, th, strong, b'
+      )
+    ];
+
+    for (const element of moneyElements) {
+      const text =
+        (element.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      if (
+        !/total|valor do pedido|valor total/i.test(text) ||
+        !/R\$/i.test(text)
+      ) {
+        continue;
+      }
+
+      const moneyMatch =
+        text.match(/R\$\s*([\d.]+,\d{2})/i);
+
+      if (moneyMatch) {
+        amount = parseMoney(moneyMatch[1]);
+      }
+    }
+
+    if (amount == null) {
+      const fallback =
+        bodyText.match(
+          /(?:total|valor total|valor do pedido)[^R$]{0,60}R\$\s*([\d.]+,\d{2})/i
+        );
+
+      if (fallback) {
+        amount = parseMoney(fallback[1]);
+      }
+    }
+
+    const items = [
+      ...document.querySelectorAll(
+        'tr, .cart-item, .cart_item, [data-id-produto]'
+      )
+    ]
+      .map((row) => {
+        const text =
+          (row.textContent || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        const dataset = row.dataset || {};
+
+        return {
+          product_id:
+            dataset.idProduto ||
+            dataset.codprod ||
+            dataset.codigoProduto ||
+            '',
+          text: text.slice(0, 300)
+        };
+      })
+      .filter((item) => item.product_id || item.text)
+      .slice(0, 50);
+
+    let customer = {};
+
+    try {
+      customer =
+        JSON.parse(
+          sessionStorage.getItem(
+            '__hernandes_kiosk_customer_state'
+          ) || '{}'
+        ) || {};
+    } catch (_) {}
+
+    return {
+      order_number:
+        orderMatch?.[1] || '',
+      amount,
+      items,
+      customer_type:
+        customer.customerType || '',
+      customer_name:
+        customer.name || '',
+      customer_phone:
+        customer.phone || '',
+      payload: {
+        page: window.location.pathname,
+        title: document.title
+      }
+    };
+  };
+
   const launchConfetti = (overlay) => {
     const layer = overlay.querySelector('.__confetti-layer');
     if (!layer) return;
@@ -70,6 +183,16 @@
   const showReturnHome = () => {
     if (!onConfirmationPage()) return;
     if (document.getElementById('__hernandes-return-home')) return;
+
+    const orderData = extractOrderData();
+
+    try {
+      window.chrome?.webview?.postMessage({
+        type: 'totem_event',
+        event_type: 'order_completed',
+        ...orderData
+      });
+    } catch (_) {}
 
     // The completed order closes the current kiosk customer cycle.
     // The next customer's first add-to-cart action must identify them again.
