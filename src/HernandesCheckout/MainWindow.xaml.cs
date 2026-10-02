@@ -280,8 +280,8 @@ public partial class MainWindow : Window
 
     private static string CsvEscape(string value)
     {
-        var safe = value.Replace("\\\"", "\\\"\\\"");
-        return $"\\\"{safe}\\\"";
+        var safe = value.Replace("\"", "\"\"");
+        return $"\"{safe}\"";
     }
 
     private void SaveLead(JsonElement root)
