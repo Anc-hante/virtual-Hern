@@ -3,59 +3,59 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 echo ============================================
-echo   HERNANDES CHECKOUT - BUILD UNICO EXE
+echo   HERNANDES CHECKOUT - WEBVIEW2
 echo ============================================
 echo.
 
-where py >nul 2>nul
-if errorlevel 1 (
-  echo [ERRO] Python nao encontrado.
-  echo Instale Python 3.14 64 bits e marque "Add Python to PATH".
-  pause
-  exit /b 1
+set "DOTNET=%CD%\.dotnet\dotnet.exe"
+
+if not exist "%DOTNET%" (
+  where dotnet >nul 2>nul
+  if not errorlevel 1 (
+    set "DOTNET=dotnet"
+  )
 )
 
-if not exist ".venv\Scripts\python.exe" (
-  echo [1/5] Criando ambiente virtual...
-  py -m venv .venv
+if not exist "%DOTNET%" if "%DOTNET%"=="%CD%\.dotnet\dotnet.exe" (
+  echo [1/4] Baixando .NET SDK 10 localmente...
+  if not exist ".dotnet" mkdir ".dotnet"
+
+  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ErrorActionPreference='Stop'; " ^
+    "Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1; " ^
+    "& .\dotnet-install.ps1 -Channel 10.0 -InstallDir .\.dotnet -NoPath"
+
+  if errorlevel 1 goto :error
+
+  if exist "dotnet-install.ps1" del /q "dotnet-install.ps1"
 )
 
-call ".venv\Scripts\activate.bat"
-
-echo [2/5] Instalando dependencias...
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+echo [2/4] Restaurando dependencias...
+"%DOTNET%" restore "src\HernandesCheckout\HernandesCheckout.csproj"
 if errorlevel 1 goto :error
 
-echo [3/5] Validando codigo...
-python -m compileall -q src
-if errorlevel 1 goto :error
-
-echo [4/5] Limpando build anterior...
-if exist build rmdir /s /q build
+echo [3/4] Limpando build anterior...
 if exist dist rmdir /s /q dist
-if exist HernandesCheckout.spec del /q HernandesCheckout.spec
 
-echo [5/5] Gerando um unico HernandesCheckout.exe...
-python -m PyInstaller ^
-  --noconfirm ^
-  --clean ^
-  --onefile ^
-  --windowed ^
-  --name HernandesCheckout ^
-  --paths "src" ^
-  --add-data "src\resources;resources" ^
-  --collect-all PySide6.QtWebEngineCore ^
-  --collect-all PySide6.QtWebEngineWidgets ^
-  "src\main.py"
+echo [4/4] Gerando HernandesCheckout.exe...
+"%DOTNET%" publish "src\HernandesCheckout\HernandesCheckout.csproj" ^
+  -c Release ^
+  -r win-x64 ^
+  --self-contained true ^
+  -o dist ^
+  /p:PublishSingleFile=true ^
+  /p:IncludeNativeLibrariesForSelfExtract=true ^
+  /p:EnableCompressionInSingleFile=true
 
 if errorlevel 1 goto :error
+
+if not exist "dist\HernandesCheckout.exe" goto :error
 
 echo.
 echo ============================================
 echo PRONTO!
 echo.
-echo Arquivo unico gerado:
+echo Aplicativo:
 echo %CD%\dist\HernandesCheckout.exe
 echo ============================================
 explorer "%CD%\dist"
@@ -64,7 +64,7 @@ exit /b 0
 
 :error
 echo.
-echo [ERRO] Nao foi possivel gerar o EXE.
+echo [ERRO] Nao foi possivel gerar o checkout.
 echo Tire uma foto desta tela ou copie o erro.
 pause
 exit /b 1
