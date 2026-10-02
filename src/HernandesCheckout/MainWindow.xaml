@@ -19,12 +19,81 @@
 
         <Border x:Name="StatusBar"
                 Grid.Row="0"
-                Height="46"
+                Height="52"
                 Background="White"
                 BorderBrush="#E5E7EB"
                 BorderThickness="0,0,0,1">
-            <Grid>
+            <Grid Margin="14,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0"
+                        Padding="12,6"
+                        VerticalAlignment="Center"
+                        Background="#FDEBEC"
+                        CornerRadius="999">
+                    <TextBlock Text="HERNANDES CHECKOUT"
+                               Foreground="#A7191F"
+                               FontFamily="Segoe UI Variable Display, Segoe UI"
+                               FontSize="12"
+                               FontWeight="Bold"/>
+                </Border>
+
+                <TextBlock x:Name="StatusText"
+                           Grid.Column="1"
+                           Margin="14,0"
+                           Text="Carregando Hernandes Checkout..."
+                           VerticalAlignment="Center"
+                           Foreground="#667085"
+                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                           FontSize="13"
+                           FontWeight="SemiBold"/>
+
+                <Button x:Name="RestartButton"
+                        Grid.Column="2"
+                        MinWidth="190"
+                        Height="38"
+                        Padding="14,0"
+                        VerticalAlignment="Center"
+                        Content="↻  Reiniciar e-commerce"
+                        Foreground="#A7191F"
+                        Background="#FFF6F6"
+                        BorderBrush="#EAB5B7"
+                        BorderThickness="1"
+                        FontFamily="Segoe UI Variable Text, Segoe UI"
+                        FontSize="13"
+                        FontWeight="Bold"
+                        Cursor="Hand"
+                        Click="RestartButton_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="RestartBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="11">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="RestartBorder"
+                                            Property="Background"
+                                            Value="#FDEBEC"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.55"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+
                 <ProgressBar x:Name="LoadProgress"
+                             Grid.ColumnSpan="3"
                              Height="3"
                              VerticalAlignment="Bottom"
                              Minimum="0"
@@ -32,15 +101,6 @@
                              BorderThickness="0"
                              Foreground="#A7191F"
                              Background="#F3F4F6"/>
-
-                <TextBlock x:Name="StatusText"
-                           Text="Carregando Hernandes Checkout..."
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Foreground="#7F1D1D"
-                           FontFamily="Segoe UI Variable Text, Segoe UI"
-                           FontSize="14"
-                           FontWeight="SemiBold"/>
             </Grid>
         </Border>
 
