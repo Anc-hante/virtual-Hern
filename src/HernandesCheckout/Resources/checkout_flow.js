@@ -5,8 +5,16 @@
   const HOME_URL = 'https://www.grupohernandes.com.br/';
 
   const onConfirmationPage = () => {
-    const path = (window.location.pathname || '').replace(/\/+$/, '');
-    return path === '/confirmacao';
+    const path = (window.location.pathname || '')
+      .replace(/\/+$/, '')
+      .toLowerCase();
+
+    return (
+      path.includes('confirmacao') ||
+      path.includes('pedido-finalizado') ||
+      path.includes('pedido-finalizado') ||
+      path.includes('sucesso')
+    );
   };
 
   const isSuccessPopup = (popup) => {
@@ -181,8 +189,15 @@
   };
 
   const showReturnHome = () => {
-    if (!onConfirmationPage()) return;
+    if (!document.body) return;
     if (document.getElementById('__hernandes-return-home')) return;
+
+    try {
+      window.chrome?.webview?.postMessage({
+        type: 'kiosk',
+        action: 'completion-lock'
+      });
+    } catch (_) {}
 
     const orderData = extractOrderData();
 
@@ -419,17 +434,17 @@
         </div>
 
         <h2 id="__hernandes-return-title">
-          Compra finalizada com sucesso
+          Obrigado pela sua compra!
         </h2>
 
         <p>
-          Para iniciar um novo atendimento,
-          toque no botão abaixo e volte para a página inicial.
+          Seu pedido foi finalizado com sucesso.
+          Quando estiver pronto, toque abaixo para iniciar um novo atendimento.
         </p>
 
         <button id="__hernandes-go-home"
                 type="button">
-          Voltar ao início
+          Iniciar novo atendimento
         </button>
       </div>
     `;
@@ -439,7 +454,14 @@
     overlay
       .querySelector('#__hernandes-go-home')
       ?.addEventListener('click', () => {
-        window.location.assign(HOME_URL);
+        try {
+          window.chrome?.webview?.postMessage({
+            type: 'kiosk',
+            action: 'completion-release'
+          });
+        } catch (_) {}
+
+        window.location.replace(HOME_URL);
       }, { once: true });
 
     requestAnimationFrame(() => {
@@ -449,8 +471,6 @@
   };
 
   const bindSuccessPopup = () => {
-    if (!onConfirmationPage()) return;
-
     const popup = document.querySelector(
       '.swal2-popup.swal2-show');
 
@@ -467,12 +487,15 @@
 
     confirm.dataset.hernandesReturnBound = '1';
 
-    confirm.addEventListener('click', () => {
-      // Show the kiosk completion screen in the same click turn.
-      // Waiting until after SweetAlert closes can lose this callback
-      // when the page removes/replaces the modal DOM.
+    confirm.addEventListener('click', (event) => {
+      // Do not allow the e-commerce success handler to schedule/perform
+      // its automatic return. The kiosk owns the post-sale experience.
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
       showReturnHome();
-    }, { once: true });
+    }, { capture: true, once: true });
   };
 
   const observer = new MutationObserver(bindSuccessPopup);
@@ -491,9 +514,19 @@
     if (
       confirm &&
       isSuccessPopup(popup) &&
-      onConfirmationPage()
+      (
+        onConfirmationPage() ||
+        /pedido|compra|recebido|finalizado/i.test(
+          popup?.textContent || ''
+        )
+      )
     ) {
-      // Capture phase runs before SweetAlert removes the popup.
+      // Capture before the site's own SweetAlert handler. This prevents
+      // the native five-second redirect from taking over the kiosk.
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
       showReturnHome();
     }
   }, true);
