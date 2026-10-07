@@ -19,18 +19,69 @@
 
         <Border x:Name="StatusBar"
                 Grid.Row="0"
-                Height="52"
+                Height="58"
                 Background="White"
                 BorderBrush="#E5E7EB"
                 BorderThickness="0,0,0,1">
-            <Grid Margin="14,0">
+            <Grid Margin="12,0">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0"
+                <Button x:Name="BackButton"
+                        Grid.Column="0"
+                        Width="124"
+                        Height="42"
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        Content="←  Voltar"
+                        Foreground="White"
+                        Background="#A7191F"
+                        BorderBrush="#A7191F"
+                        BorderThickness="1"
+                        FontFamily="Segoe UI Variable Text, Segoe UI"
+                        FontSize="15"
+                        FontWeight="Bold"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        Click="BackButton_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="BackBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="13">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="BackBorder"
+                                            Property="Background"
+                                            Value="#851419"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="BackBorder"
+                                            Property="Background"
+                                            Value="#E5E7EB"/>
+                                    <Setter TargetName="BackBorder"
+                                            Property="BorderBrush"
+                                            Value="#E5E7EB"/>
+                                    <Setter Property="Foreground"
+                                            Value="#9CA3AF"/>
+                                    <Setter Property="Opacity"
+                                            Value="0.8"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+
+                <Border Grid.Column="1"
                         Padding="12,6"
                         VerticalAlignment="Center"
                         Background="#FDEBEC"
@@ -43,9 +94,9 @@
                 </Border>
 
                 <TextBlock x:Name="StatusText"
-                           Grid.Column="1"
+                           Grid.Column="2"
                            Margin="14,0"
-                           Text="Carregando Hernandes Checkout..."
+                           Text="Abrindo checkout..."
                            VerticalAlignment="Center"
                            Foreground="#667085"
                            FontFamily="Segoe UI Variable Text, Segoe UI"
@@ -53,9 +104,9 @@
                            FontWeight="SemiBold"/>
 
                 <Button x:Name="RestartButton"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         MinWidth="190"
-                        Height="38"
+                        Height="40"
                         Padding="14,0"
                         VerticalAlignment="Center"
                         Content="↻  Reiniciar e-commerce"
@@ -93,7 +144,7 @@
                 </Button>
 
                 <ProgressBar x:Name="LoadProgress"
-                             Grid.ColumnSpan="3"
+                             Grid.ColumnSpan="4"
                              Height="3"
                              VerticalAlignment="Bottom"
                              Minimum="0"
