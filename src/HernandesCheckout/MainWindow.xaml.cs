@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _keyboardVisible;
     private bool _webReady;
+    private bool _hasSuccessfulNavigation;
     private bool _completionLocked;
     private bool _sessionStartedSent;
     private bool _startNewSessionOnNextHome;
@@ -111,6 +112,7 @@ public partial class MainWindow : Window
                 if (args.IsSuccess)
                 {
                     _webReady = true;
+                    _hasSuccessfulNavigation = true;
                     Browser.Visibility = Visibility.Visible;
                     StartupError.Visibility = Visibility.Collapsed;
                     RestartButton.IsEnabled = true;
@@ -118,18 +120,50 @@ public partial class MainWindow : Window
                     HideStatus();
                     ResetInactivityTimer();
                     _ = OnNavigationReadyAsync();
+                    return;
                 }
-                else
+
+                // Login, redirects and SPA transitions can cancel an older
+                // navigation while the next one is already loading. That is
+                // normal WebView2 behavior and must never become a customer
+                // facing "failed to load" popup.
+                if (
+                    args.WebErrorStatus ==
+                    CoreWebView2WebErrorStatus.OperationCanceled)
                 {
-                    ShowNavigationError(
-                        $"Falha ao carregar o e-commerce ({args.WebErrorStatus}).");
+                    return;
                 }
+
+                // Once the storefront has loaded successfully at least once,
+                // keep transient navigation failures silent. A following
+                // redirect/navigation will complete normally and restore the
+                // ready state. This avoids flashing a technical error during
+                // login and checkout transitions.
+                if (_hasSuccessfulNavigation)
+                {
+                    Browser.Visibility = Visibility.Visible;
+                    StartupError.Visibility = Visibility.Collapsed;
+                    RestartButton.IsEnabled = true;
+                    return;
+                }
+
+                ShowNavigationError(
+                    "Não foi possível abrir o e-commerce. " +
+                    "Verifique a conexão e tente novamente.");
             };
 
-            Browser.CoreWebView2.ProcessFailed += (_, args) =>
+            Browser.CoreWebView2.ProcessFailed += (_, _) =>
             {
+                if (_hasSuccessfulNavigation)
+                {
+                    Browser.Visibility = Visibility.Visible;
+                    StartupError.Visibility = Visibility.Collapsed;
+                    RestartButton.IsEnabled = true;
+                    return;
+                }
+
                 ShowNavigationError(
-                    $"O navegador foi interrompido ({args.ProcessFailedKind}). " +
+                    "Não foi possível iniciar o e-commerce. " +
                     "Toque em tentar novamente.");
             };
 
