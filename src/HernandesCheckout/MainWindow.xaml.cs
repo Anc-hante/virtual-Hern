@@ -88,6 +88,11 @@ public partial class MainWindow : Window
             Browser.CoreWebView2.WebMessageReceived +=
                 CoreWebView2_WebMessageReceived;
 
+            Browser.CoreWebView2.HistoryChanged += (_, _) =>
+            {
+                Dispatcher.Invoke(UpdateBackButton);
+            };
+
             Browser.CoreWebView2.NavigationStarting += (_, args) =>
             {
                 if (_completionLocked)
@@ -98,13 +103,27 @@ public partial class MainWindow : Window
 
                 _webReady = false;
 
-                ShowStatus(
-                    "Carregando e-commerce...",
-                    12);
+                // Only show a loading state during the very first startup.
+                // Normal page-to-page navigation should feel like a browser,
+                // not like the application is restarting every time.
+                if (!_hasSuccessfulNavigation)
+                {
+                    ShowStatus(
+                        "Abrindo checkout...",
+                        12);
+                }
+                else
+                {
+                    StatusText.Text = "Pronto para atendimento";
+                    LoadProgress.Visibility = Visibility.Collapsed;
+                }
 
-                HideKeyboard(
-                    animate: false,
-                    clearWebFocus: false);
+                if (_keyboardVisible)
+                {
+                    HideKeyboard(
+                        animate: false,
+                        clearWebFocus: false);
+                }
             };
 
             Browser.CoreWebView2.NavigationCompleted += (_, args) =>
@@ -118,6 +137,7 @@ public partial class MainWindow : Window
                     RestartButton.IsEnabled = true;
 
                     HideStatus();
+                    UpdateBackButton();
                     ResetInactivityTimer();
                     _ = OnNavigationReadyAsync();
                     return;
@@ -141,9 +161,12 @@ public partial class MainWindow : Window
                 // login and checkout transitions.
                 if (_hasSuccessfulNavigation)
                 {
+                    _webReady = true;
                     Browser.Visibility = Visibility.Visible;
                     StartupError.Visibility = Visibility.Collapsed;
                     RestartButton.IsEnabled = true;
+                    UpdateBackButton();
+                    HideStatus();
                     return;
                 }
 
@@ -311,6 +334,7 @@ public partial class MainWindow : Window
         if (action == "completion-lock")
         {
             _completionLocked = true;
+            BackButton.IsEnabled = false;
             _inactivityTimer.Stop();
             return;
         }
@@ -319,6 +343,7 @@ public partial class MainWindow : Window
         {
             _completionLocked = false;
             _startNewSessionOnNextHome = true;
+            UpdateBackButton();
             return;
         }
 
@@ -572,15 +597,21 @@ public partial class MainWindow : Window
         _keyboardVisible = true;
         KeyboardContainer.IsHitTestVisible = true;
 
-        AnimateKeyboardHeight(
-            KeyboardHeight,
-            milliseconds: 135);
+        // Resize WebView2 only once. Animating Height frame-by-frame forces
+        // the native browser surface to recompute its layout dozens of times
+        // and was the main source of visible stutter on the kiosk.
+        KeyboardContainer.BeginAnimation(
+            HeightProperty,
+            null);
+
+        KeyboardContainer.Height = KeyboardHeight;
+        KeyboardContainer.Opacity = 0;
 
         AnimateOpacity(
             KeyboardContainer,
-            KeyboardContainer.Opacity,
+            0,
             1,
-            milliseconds: 95);
+            milliseconds: 85);
 
         _ = EnsureTargetVisibleAsync();
     }
@@ -600,20 +631,48 @@ public partial class MainWindow : Window
 
         if (animate)
         {
-            AnimateKeyboardHeight(
-                0,
-                milliseconds: 115);
+            var fade = new DoubleAnimation
+            {
+                From = KeyboardContainer.Opacity,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(70),
+                EasingFunction = new CubicEase
+                {
+                    EasingMode = EasingMode.EaseOut,
+                },
+                FillBehavior = FillBehavior.Stop,
+            };
 
-            AnimateOpacity(
-                KeyboardContainer,
-                KeyboardContainer.Opacity,
-                0,
-                milliseconds: 85);
+            fade.Completed += (_, _) =>
+            {
+                KeyboardContainer.BeginAnimation(
+                    OpacityProperty,
+                    null);
+
+                KeyboardContainer.Opacity = 0;
+
+                KeyboardContainer.BeginAnimation(
+                    HeightProperty,
+                    null);
+
+                // One WebView2 resize after the fade, instead of resizing
+                // the native browser surface on every animation frame.
+                KeyboardContainer.Height = 0;
+            };
+
+            KeyboardContainer.BeginAnimation(
+                OpacityProperty,
+                fade,
+                HandoffBehavior.SnapshotAndReplace);
         }
         else
         {
             KeyboardContainer.BeginAnimation(
                 HeightProperty,
+                null);
+
+            KeyboardContainer.BeginAnimation(
+                OpacityProperty,
                 null);
 
             KeyboardContainer.Height = 0;
@@ -625,44 +684,6 @@ public partial class MainWindow : Window
             _ = ExecuteScriptSerialAsync(
                 "window.__hernandesKeyboardDismiss?.();");
         }
-    }
-
-    private void AnimateKeyboardHeight(
-        double target,
-        int milliseconds)
-    {
-        KeyboardContainer.BeginAnimation(
-            HeightProperty,
-            null);
-
-        var current = KeyboardContainer.ActualHeight;
-
-        var animation = new DoubleAnimation
-        {
-            From = current,
-            To = target,
-            Duration =
-                TimeSpan.FromMilliseconds(milliseconds),
-            EasingFunction = new CubicEase
-            {
-                EasingMode = EasingMode.EaseOut,
-            },
-            FillBehavior = FillBehavior.Stop,
-        };
-
-        animation.Completed += (_, _) =>
-        {
-            KeyboardContainer.BeginAnimation(
-                HeightProperty,
-                null);
-
-            KeyboardContainer.Height = target;
-        };
-
-        KeyboardContainer.BeginAnimation(
-            HeightProperty,
-            animation,
-            HandoffBehavior.SnapshotAndReplace);
     }
 
     private static void AnimateOpacity(
@@ -785,6 +806,35 @@ public partial class MainWindow : Window
         StatusBar.Visibility = Visibility.Visible;
 
         RestartButton.IsEnabled = true;
+    }
+
+    private void UpdateBackButton()
+    {
+        BackButton.IsEnabled =
+            !_completionLocked &&
+            Browser.CoreWebView2 is not null &&
+            Browser.CoreWebView2.CanGoBack;
+    }
+
+    private void BackButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ResetInactivityTimer();
+
+        if (_completionLocked ||
+            Browser.CoreWebView2 is null ||
+            !Browser.CoreWebView2.CanGoBack)
+        {
+            UpdateBackButton();
+            return;
+        }
+
+        HideKeyboard(
+            animate: false,
+            clearWebFocus: false);
+
+        Browser.CoreWebView2.GoBack();
     }
 
     private async void RetryButton_Click(
