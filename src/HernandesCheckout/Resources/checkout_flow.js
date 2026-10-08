@@ -174,6 +174,13 @@
 
     if (!isSuccessPopup(popup)) return;
 
+    // The order is already completed at this point. Stop the ecommerce
+    // acknowledgement handler so its automatic redirect cannot race the
+    // native kiosk completion screen.
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
     completeCheckout();
   }, true);
 })();
