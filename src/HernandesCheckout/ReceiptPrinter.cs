@@ -7,37 +7,26 @@ namespace HernandesCheckout;
 
 public static class ReceiptPrinter
 {
+    public static bool IsAvailable()
+    {
+        try
+        {
+            using var server = new LocalPrintServer();
+            return ResolveQueue(server) is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static string Print(string receiptText)
     {
         using var server = new LocalPrintServer();
 
-        var configuredPrinter =
-            Environment.GetEnvironmentVariable(
-                "HERNANDES_TOTEM_PRINTER_NAME")
-            ?.Trim();
-
-        PrintQueue? queue = null;
-
-        if (!string.IsNullOrWhiteSpace(configuredPrinter))
-        {
-            try
-            {
-                queue = server.GetPrintQueue(
-                    configuredPrinter);
-            }
-            catch
-            {
-                queue = null;
-            }
-        }
-
-        queue ??= server.DefaultPrintQueue;
-
-        if (queue is null)
-        {
-            throw new InvalidOperationException(
+        var queue = ResolveQueue(server)
+            ?? throw new InvalidOperationException(
                 "Nenhuma impressora configurada no Windows.");
-        }
 
         var document = new FlowDocument
         {
@@ -82,5 +71,36 @@ public static class ReceiptPrinter
         writer.Write(paginator);
 
         return queue.FullName;
+    }
+
+    private static PrintQueue? ResolveQueue(
+        LocalPrintServer server)
+    {
+        var configuredPrinter =
+            Environment.GetEnvironmentVariable(
+                "HERNANDES_TOTEM_PRINTER_NAME")
+            ?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(configuredPrinter))
+        {
+            try
+            {
+                return server.GetPrintQueue(
+                    configuredPrinter);
+            }
+            catch
+            {
+                // Fall back to the Windows default printer.
+            }
+        }
+
+        try
+        {
+            return server.DefaultPrintQueue;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
