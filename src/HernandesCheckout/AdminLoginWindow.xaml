@@ -1,9 +1,10 @@
 <Window x:Class="HernandesCheckout.AdminLoginWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:HernandesCheckout"
         Title="Acesso administrativo"
-        Width="520"
-        Height="390"
+        Width="760"
+        Height="900"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="None"
@@ -24,6 +25,7 @@
 
         <Grid>
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -74,7 +76,8 @@
                          FontSize="17"
                          BorderBrush="#D0D5DD"
                          BorderThickness="1"
-                         Background="White"/>
+                         Background="White"
+                         GotFocus="UsernameBox_GotFocus"/>
             </StackPanel>
 
             <StackPanel Grid.Row="2"
@@ -93,6 +96,7 @@
                              BorderBrush="#D0D5DD"
                              BorderThickness="1"
                              Background="White"
+                             GotFocus="PasswordInput_GotFocus"
                              KeyDown="PasswordInput_KeyDown"/>
             </StackPanel>
 
@@ -133,6 +137,13 @@
                         FontSize="16"
                         Click="LoginButton_Click"/>
             </Grid>
+
+            <Border Grid.Row="5"
+                    Margin="0,18,0,0"
+                    CornerRadius="14"
+                    ClipToBounds="True">
+                <local:VirtualKeyboard x:Name="AdminKeyboard"/>
+            </Border>
         </Grid>
     </Border>
 </Window>
