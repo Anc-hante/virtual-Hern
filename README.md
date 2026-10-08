@@ -108,7 +108,7 @@ Leads informados no fluxo **Não** são registrados em:
 
 O checkout envia automaticamente eventos do totem para:
 
-`https://hernandesvpn.dyndns.org/api/ecommerce/totem/events`
+`https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem/events`
 
 Eventos enviados:
 
@@ -130,10 +130,48 @@ Se a API ou internet ficar indisponível, os eventos ficam na fila:
 
 e são reenviados automaticamente quando a conexão voltar.
 
-A URL pode ser sobrescrita com a variável de ambiente:
+A URL base pode ser sobrescrita com a variável de ambiente:
 
-`HERNANDES_TOTEM_API_URL`
+`HERNANDES_TOTEM_API_BASE_URL`
+
+O valor padrão é:
+
+`https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem`
+
+A variável antiga `HERNANDES_TOTEM_API_URL` continua compatível.
 
 Se o backend estiver configurado com `ECOMMERCE_TOTEM_API_TOKEN`, configure o mesmo valor no Windows em:
 
 `HERNANDES_TOTEM_API_TOKEN`
+
+
+## Impressão automática
+
+O aplicativo também funciona como agente de impressão do próprio totem:
+
+1. consulta a fila de impressão do HernandesDash a cada 2 segundos;
+2. recebe apenas trabalhos destinados ao ID daquele totem;
+3. envia o cupom para a impressora configurada no Windows;
+4. confirma no HernandesDash se foi impresso;
+5. falhas transitórias são tentadas novamente;
+6. se não houver impressora configurada, o trabalho permanece pendente no servidor.
+
+Por padrão é utilizada a impressora padrão do Windows.
+
+Para escolher uma impressora específica, configure:
+
+`HERNANDES_TOTEM_PRINTER_NAME`
+
+Exemplo:
+
+`HERNANDES_TOTEM_PRINTER_NAME=EPSON TM-T20X`
+
+A API pública usada pelo agente é:
+
+`https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem/printer/claim`
+
+e a confirmação da impressão é enviada para:
+
+`/api/ecommerce/totem/printer/jobs/<job_id>/complete`
+
+A tela final da compra é nativa do aplicativo e avisa o cliente para aguardar a impressão do cupom antes de retirá-lo.
