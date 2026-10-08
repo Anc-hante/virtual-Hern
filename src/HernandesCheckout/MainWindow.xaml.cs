@@ -398,6 +398,7 @@ public partial class MainWindow : Window
             clearWebFocus: false);
 
         BackButton.IsEnabled = false;
+        SettingsButton.IsEnabled = false;
         RestartButton.IsEnabled = false;
 
         Browser.Visibility = Visibility.Collapsed;
@@ -533,6 +534,7 @@ public partial class MainWindow : Window
         _startNewSessionOnNextHome = true;
 
         Browser.Visibility = Visibility.Visible;
+        SettingsButton.IsEnabled = true;
         RestartButton.IsEnabled = true;
 
         StatusText.Text =
@@ -717,6 +719,7 @@ public partial class MainWindow : Window
     private async Task ResetCheckoutAsync(string reason)
     {
         _completionLocked = false;
+        SettingsButton.IsEnabled = false;
         RestartButton.IsEnabled = false;
 
         ShowStatus(
@@ -745,6 +748,7 @@ public partial class MainWindow : Window
             Browser.CoreWebView2 is null)
         {
             Browser.Source = new Uri(HomeUrl);
+            SettingsButton.IsEnabled = true;
             RestartButton.IsEnabled = true;
             return;
         }
@@ -764,6 +768,7 @@ public partial class MainWindow : Window
             Browser.CoreWebView2 is not null)
         {
             Browser.CoreWebView2.Navigate(HomeUrl);
+            SettingsButton.IsEnabled = true;
             RestartButton.IsEnabled = true;
             ResetInactivityTimer();
         }
@@ -1036,6 +1041,58 @@ public partial class MainWindow : Window
         }
 
         Browser.CoreWebView2.Navigate(HomeUrl);
+    }
+
+    private void SettingsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ResetInactivityTimer();
+        _inactivityTimer.Stop();
+
+        HideKeyboard(
+            animate: false,
+            clearWebFocus: false);
+
+        try
+        {
+            var login =
+                new AdminLoginWindow
+                {
+                    Owner = this,
+                };
+
+            if (login.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var settings =
+                new PrinterSettingsWindow
+                {
+                    Owner = this,
+                };
+
+            if (settings.ShowDialog() == true)
+            {
+                _printerWorker
+                    .RefreshPrinterAvailability();
+
+                var printer =
+                    settings.SavedPrinterName;
+
+                if (!string.IsNullOrWhiteSpace(printer))
+                {
+                    StatusText.Text =
+                        "Impressora configurada: " +
+                        printer;
+                }
+            }
+        }
+        finally
+        {
+            ResetInactivityTimer();
+        }
     }
 
     private async void RestartButton_Click(
