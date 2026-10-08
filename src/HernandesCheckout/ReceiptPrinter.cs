@@ -7,6 +7,37 @@ namespace HernandesCheckout;
 
 public static class ReceiptPrinter
 {
+    public static IReadOnlyList<string> GetInstalledPrinters()
+    {
+        using var server = new LocalPrintServer();
+
+        return server
+            .GetPrintQueues()
+            .Select(queue => queue.FullName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public static string GetConfiguredPrinterName()
+    {
+        var saved =
+            PrinterSettingsStore
+                .GetPrinterName();
+
+        if (!string.IsNullOrWhiteSpace(saved))
+        {
+            return saved;
+        }
+
+        return Environment
+            .GetEnvironmentVariable(
+                "HERNANDES_TOTEM_PRINTER_NAME")
+            ?.Trim()
+            ?? string.Empty;
+    }
+
     public static bool IsAvailable()
     {
         try
@@ -20,11 +51,15 @@ public static class ReceiptPrinter
         }
     }
 
-    public static string Print(string receiptText)
+    public static string Print(
+        string receiptText,
+        string? printerName = null)
     {
         using var server = new LocalPrintServer();
 
-        var queue = ResolveQueue(server)
+        var queue = ResolveQueue(
+                server,
+                printerName)
             ?? throw new InvalidOperationException(
                 "Nenhuma impressora configurada no Windows.");
 
@@ -73,13 +108,47 @@ public static class ReceiptPrinter
         return queue.FullName;
     }
 
+    public static string PrintTest(
+        string printerName)
+    {
+        var lines = new[]
+        {
+            "HERNANDES ATACADO E DISTRIBUICAO",
+            "TESTE DE IMPRESSAO - TOTEM",
+            "------------------------------------------",
+            $"Impressora: {printerName}",
+            $"Data: {DateTime.Now:dd/MM/yyyy HH:mm:ss}",
+            "",
+            "Se voce esta lendo este cupom,",
+            "a impressora foi configurada corretamente.",
+            "",
+            "------------------------------------------",
+            "Hernandes Checkout",
+            "",
+            "",
+            "",
+        };
+
+        return Print(
+            string.Join(
+                Environment.NewLine,
+                lines),
+            printerName);
+    }
+
     private static PrintQueue? ResolveQueue(
-        LocalPrintServer server)
+        LocalPrintServer server,
+        string? preferredPrinter = null)
     {
         var configuredPrinter =
-            Environment.GetEnvironmentVariable(
-                "HERNANDES_TOTEM_PRINTER_NAME")
-            ?.Trim();
+            (preferredPrinter ?? string.Empty)
+                .Trim();
+
+        if (string.IsNullOrWhiteSpace(configuredPrinter))
+        {
+            configuredPrinter =
+                GetConfiguredPrinterName();
+        }
 
         if (!string.IsNullOrWhiteSpace(configuredPrinter))
         {
@@ -90,7 +159,8 @@ public static class ReceiptPrinter
             }
             catch
             {
-                // Fall back to the Windows default printer.
+                // A saved printer can have been removed or renamed.
+                // Fall back to the Windows default queue.
             }
         }
 
