@@ -175,3 +175,22 @@ e a confirmação da impressão é enviada para:
 `/api/ecommerce/totem/printer/jobs/<job_id>/complete`
 
 A tela final da compra é nativa do aplicativo e avisa o cliente para aguardar a impressão do cupom antes de retirá-lo.
+
+
+## Configuração administrativa da impressora
+
+No topo do checkout existe o botão **⚙** ao lado de **Reiniciar e-commerce**.
+
+Ao abrir:
+
+1. o aplicativo solicita acesso administrativo;
+2. depois lista as impressoras instaladas no Windows;
+3. permite selecionar uma impressora;
+4. permite enviar um **teste de impressão**;
+5. salva a impressora escolhida para os próximos cupons.
+
+A configuração fica salva em:
+
+`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\printer-settings.json`
+
+O acesso administrativo usa o usuário definido para o totem e a senha é validada por hash dentro do aplicativo, sem gravar a senha em texto puro no arquivo de configuração.
