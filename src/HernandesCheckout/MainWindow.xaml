@@ -29,6 +29,7 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="BackButton"
@@ -103,8 +104,49 @@
                            FontSize="13"
                            FontWeight="SemiBold"/>
 
-                <Button x:Name="RestartButton"
+                <Button x:Name="SettingsButton"
                         Grid.Column="3"
+                        Width="46"
+                        Height="40"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        Content="⚙"
+                        ToolTip="Configurações administrativas"
+                        Foreground="#A7191F"
+                        Background="#FFF6F6"
+                        BorderBrush="#EAB5B7"
+                        BorderThickness="1"
+                        FontFamily="Segoe UI Symbol, Segoe UI"
+                        FontSize="20"
+                        FontWeight="Bold"
+                        Cursor="Hand"
+                        Click="SettingsButton_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="SettingsBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="11">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="SettingsBorder"
+                                            Property="Background"
+                                            Value="#FDEBEC"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.55"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+
+                <Button x:Name="RestartButton"
+                        Grid.Column="4"
                         MinWidth="190"
                         Height="40"
                         Padding="14,0"
@@ -144,7 +186,7 @@
                 </Button>
 
                 <ProgressBar x:Name="LoadProgress"
-                             Grid.ColumnSpan="4"
+                             Grid.ColumnSpan="5"
                              Height="3"
                              VerticalAlignment="Bottom"
                              Minimum="0"
