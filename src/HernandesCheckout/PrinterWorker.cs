@@ -5,6 +5,8 @@ public sealed class PrinterWorker : IAsyncDisposable
     private readonly TotemApiClient _api;
     private readonly CancellationTokenSource _cts = new();
     private Task? _loopTask;
+    private bool _printerAvailable;
+    private DateTimeOffset _nextPrinterCheck = DateTimeOffset.MinValue;
 
     public PrinterWorker(TotemApiClient api)
     {
@@ -61,7 +63,7 @@ public sealed class PrinterWorker : IAsyncDisposable
 
     private async Task ProcessOneAsync()
     {
-        if (!ReceiptPrinter.IsAvailable())
+        if (!PrinterIsAvailable())
         {
             return;
         }
@@ -96,6 +98,25 @@ public sealed class PrinterWorker : IAsyncDisposable
                 success: false,
                 error: ex.Message);
         }
+    }
+
+    private bool PrinterIsAvailable()
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        if (now < _nextPrinterCheck)
+        {
+            return _printerAvailable;
+        }
+
+        _printerAvailable =
+            ReceiptPrinter.IsAvailable();
+
+        _nextPrinterCheck =
+            now.AddSeconds(
+                _printerAvailable ? 15 : 8);
+
+        return _printerAvailable;
     }
 
     public async ValueTask DisposeAsync()
