@@ -27,7 +27,7 @@ public sealed class PrinterWorker : IAsyncDisposable
     {
         using var timer =
             new PeriodicTimer(
-                TimeSpan.FromSeconds(4));
+                TimeSpan.FromSeconds(2));
 
         while (!cancellationToken.IsCancellationRequested)
         {
