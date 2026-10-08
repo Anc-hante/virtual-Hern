@@ -32,10 +32,13 @@ public partial class MainWindow : Window
     private readonly SemaphoreSlim _scriptLock = new(1, 1);
     private readonly DispatcherTimer _inactivityTimer;
     private readonly TotemApiClient _totemApi = new();
+    private readonly PrinterWorker _printerWorker;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        _printerWorker = new PrinterWorker(_totemApi);
 
         _inactivityTimer = new DispatcherTimer
         {
@@ -45,6 +48,7 @@ public partial class MainWindow : Window
         _inactivityTimer.Tick += InactivityTimer_Tick;
 
         Loaded += MainWindow_Loaded;
+        Closed += MainWindow_Closed;
         Keyboard.KeyRequested += Keyboard_KeyRequested;
         Keyboard.HideRequested += Keyboard_HideRequested;
     }
@@ -53,7 +57,15 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        _printerWorker.Start();
         await InitializeWebViewAsync();
+    }
+
+    private async void MainWindow_Closed(
+        object? sender,
+        EventArgs e)
+    {
+        await _printerWorker.DisposeAsync();
     }
 
     private async Task InitializeWebViewAsync()
