@@ -163,6 +163,99 @@
                           VerticalAlignment="Stretch"
                           DefaultBackgroundColor="White"/>
 
+            <Grid x:Name="CompletionScreen"
+                  Visibility="Collapsed"
+                  Background="#F8F9FA">
+                <Canvas x:Name="ConfettiCanvas"
+                        IsHitTestVisible="False"
+                        ClipToBounds="True"/>
+
+                <Border Width="680"
+                        MaxWidth="92%"
+                        Padding="46,42"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="White"
+                        BorderBrush="#ECEEF1"
+                        BorderThickness="1"
+                        CornerRadius="28">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="32"
+                                          ShadowDepth="10"
+                                          Opacity="0.13"/>
+                    </Border.Effect>
+
+                    <StackPanel>
+                        <Border Width="96"
+                                Height="96"
+                                HorizontalAlignment="Center"
+                                Background="#EDF9EF"
+                                CornerRadius="48">
+                            <TextBlock Text="✓"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="#218838"
+                                       FontSize="52"
+                                       FontWeight="Bold"/>
+                        </Border>
+
+                        <TextBlock Margin="0,22,0,0"
+                                   HorizontalAlignment="Center"
+                                   Text="PEDIDO CONCLUÍDO"
+                                   Foreground="#A7191F"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   CharacterSpacing="90"/>
+
+                        <TextBlock Margin="0,8,0,0"
+                                   Text="Obrigado pela sua compra!"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Foreground="#20242A"
+                                   FontFamily="Segoe UI Variable Display, Segoe UI"
+                                   FontSize="38"
+                                   FontWeight="Bold"/>
+
+                        <TextBlock Margin="18,14,18,0"
+                                   Text="Seu pedido foi finalizado com sucesso."
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Foreground="#667085"
+                                   FontSize="19"/>
+
+                        <Border Margin="8,24,8,0"
+                                Padding="18"
+                                Background="#FFF7E8"
+                                BorderBrush="#F3D08A"
+                                BorderThickness="1"
+                                CornerRadius="14">
+                            <StackPanel>
+                                <TextBlock Text="🧾  Aguarde o cupom"
+                                           TextAlignment="Center"
+                                           Foreground="#8A5A00"
+                                           FontSize="18"
+                                           FontWeight="Bold"/>
+                                <TextBlock Margin="0,6,0,0"
+                                           Text="Por favor, aguarde a impressora terminar de imprimir o cupom antes de retirá-lo."
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           Foreground="#6B4A0A"
+                                           FontSize="16"
+                                           LineHeight="23"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Button x:Name="CompletionHomeButton"
+                                Margin="36,28,36,0"
+                                Height="68"
+                                Content="Iniciar novo atendimento"
+                                Style="{StaticResource PrimaryKeyStyle}"
+                                FontSize="20"
+                                Click="CompletionHomeButton_Click"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
             <Border x:Name="StartupError"
                     Width="620"
                     Padding="32"
