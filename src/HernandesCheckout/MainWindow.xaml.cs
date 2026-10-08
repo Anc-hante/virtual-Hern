@@ -4,8 +4,11 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 
@@ -333,9 +336,7 @@ public partial class MainWindow : Window
 
         if (action == "completion-lock")
         {
-            _completionLocked = true;
-            BackButton.IsEnabled = false;
-            _inactivityTimer.Stop();
+            Dispatcher.Invoke(ShowCompletionScreen);
             return;
         }
 
@@ -368,6 +369,178 @@ public partial class MainWindow : Window
                 ResetInactivityTimer();
             });
         }
+    }
+
+    private void ShowCompletionScreen()
+    {
+        if (CompletionScreen.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
+        _completionLocked = true;
+        _inactivityTimer.Stop();
+
+        HideKeyboard(
+            animate: false,
+            clearWebFocus: false);
+
+        BackButton.IsEnabled = false;
+        RestartButton.IsEnabled = false;
+
+        Browser.Visibility = Visibility.Collapsed;
+        StartupError.Visibility = Visibility.Collapsed;
+        CompletionScreen.Visibility = Visibility.Visible;
+
+        StatusText.Text = "Pedido finalizado";
+        LoadProgress.Visibility = Visibility.Collapsed;
+
+        Dispatcher.BeginInvoke(
+            new Action(StartCompletionConfetti),
+            DispatcherPriority.Loaded);
+    }
+
+    private void StartCompletionConfetti()
+    {
+        ConfettiCanvas.Children.Clear();
+
+        var width = Math.Max(
+            720,
+            CompletionScreen.ActualWidth);
+
+        var height = Math.Max(
+            1100,
+            CompletionScreen.ActualHeight);
+
+        var brushes = new Brush[]
+        {
+            new SolidColorBrush(Color.FromRgb(167, 25, 31)),
+            new SolidColorBrush(Color.FromRgb(213, 43, 50)),
+            new SolidColorBrush(Color.FromRgb(246, 195, 68)),
+            new SolidColorBrush(Color.FromRgb(46, 155, 80)),
+            Brushes.White,
+        };
+
+        for (var index = 0; index < 44; index += 1)
+        {
+            var piece = new Rectangle
+            {
+                Width = Random.Shared.Next(7, 14),
+                Height = Random.Shared.Next(11, 21),
+                RadiusX = 1.5,
+                RadiusY = 1.5,
+                Fill = brushes[index % brushes.Length],
+                Opacity = 0.95,
+                RenderTransformOrigin =
+                    new Point(0.5, 0.5),
+            };
+
+            var rotate =
+                new RotateTransform();
+
+            piece.RenderTransform = rotate;
+
+            var left =
+                Random.Shared.NextDouble() *
+                Math.Max(1, width - 20);
+
+            Canvas.SetLeft(piece, left);
+            Canvas.SetTop(piece, -30);
+
+            ConfettiCanvas.Children.Add(piece);
+
+            var delay =
+                TimeSpan.FromMilliseconds(
+                    Random.Shared.Next(0, 500));
+
+            var duration =
+                TimeSpan.FromMilliseconds(
+                    Random.Shared.Next(1750, 2950));
+
+            var fall = new DoubleAnimation
+            {
+                From = -30,
+                To = height + 40,
+                BeginTime = delay,
+                Duration = duration,
+                EasingFunction = new QuadraticEase
+                {
+                    EasingMode =
+                        EasingMode.EaseIn,
+                },
+                FillBehavior =
+                    FillBehavior.Stop,
+            };
+
+            var spin = new DoubleAnimation
+            {
+                From = 0,
+                To = Random.Shared.Next(420, 1080),
+                BeginTime = delay,
+                Duration = duration,
+                FillBehavior =
+                    FillBehavior.Stop,
+            };
+
+            var fade = new DoubleAnimation
+            {
+                From = 0.95,
+                To = 0.08,
+                BeginTime =
+                    delay +
+                    TimeSpan.FromMilliseconds(900),
+                Duration =
+                    TimeSpan.FromMilliseconds(1200),
+                FillBehavior =
+                    FillBehavior.Stop,
+            };
+
+            piece.BeginAnimation(
+                Canvas.TopProperty,
+                fall);
+
+            rotate.BeginAnimation(
+                RotateTransform.AngleProperty,
+                spin);
+
+            piece.BeginAnimation(
+                OpacityProperty,
+                fade);
+        }
+    }
+
+    private void CompletionHomeButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ConfettiCanvas.Children.Clear();
+        CompletionScreen.Visibility =
+            Visibility.Collapsed;
+
+        _completionLocked = false;
+        _startNewSessionOnNextHome = true;
+
+        Browser.Visibility = Visibility.Visible;
+        RestartButton.IsEnabled = true;
+
+        StatusText.Text =
+            "Pronto para atendimento";
+
+        LoadProgress.Visibility =
+            Visibility.Collapsed;
+
+        if (Browser.CoreWebView2 is not null)
+        {
+            Browser.CoreWebView2.Navigate(
+                HomeUrl);
+        }
+        else
+        {
+            Browser.Source =
+                new Uri(HomeUrl);
+        }
+
+        ResetInactivityTimer();
     }
 
     private async Task HandleTotemEventAsync(
