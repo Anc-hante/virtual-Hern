@@ -61,6 +61,11 @@ public sealed class PrinterWorker : IAsyncDisposable
 
     private async Task ProcessOneAsync()
     {
+        if (!ReceiptPrinter.IsAvailable())
+        {
+            return;
+        }
+
         // Flush the completed-order event first so the server can create
         // its print job before we ask for the next receipt.
         await _api.FlushPendingAsync();
