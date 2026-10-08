@@ -81,7 +81,7 @@
 
   const reportActivity = () => {
     const now = Date.now();
-    if (now - lastActivityPost < 750) return;
+    if (now - lastActivityPost < 1500) return;
     lastActivityPost = now;
 
     post({
@@ -92,11 +92,8 @@
 
   for (const eventName of [
     'pointerdown',
-    'touchstart',
     'keydown',
-    'input',
-    'wheel',
-    'scroll'
+    'input'
   ]) {
     document.addEventListener(
       eventName,
