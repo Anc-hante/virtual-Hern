@@ -13,6 +13,14 @@ public sealed class PrinterWorker : IAsyncDisposable
         _api = api;
     }
 
+    public void RefreshPrinterAvailability()
+    {
+        _nextPrinterCheck =
+            DateTimeOffset.MinValue;
+
+        _printerAvailable = false;
+    }
+
     public void Start()
     {
         if (_loopTask is not null)
