@@ -10,9 +10,34 @@ public static class ReceiptPrinter
     public static string Print(string receiptText)
     {
         using var server = new LocalPrintServer();
-        var queue = server.DefaultPrintQueue
-            ?? throw new InvalidOperationException(
-                "Nenhuma impressora padrao configurada no Windows.");
+
+        var configuredPrinter =
+            Environment.GetEnvironmentVariable(
+                "HERNANDES_TOTEM_PRINTER_NAME")
+            ?.Trim();
+
+        PrintQueue? queue = null;
+
+        if (!string.IsNullOrWhiteSpace(configuredPrinter))
+        {
+            try
+            {
+                queue = server.GetPrintQueue(
+                    configuredPrinter);
+            }
+            catch
+            {
+                queue = null;
+            }
+        }
+
+        queue ??= server.DefaultPrintQueue;
+
+        if (queue is null)
+        {
+            throw new InvalidOperationException(
+                "Nenhuma impressora configurada no Windows.");
+        }
 
         var document = new FlowDocument
         {
@@ -37,8 +62,19 @@ public static class ReceiptPrinter
             ((IDocumentPaginatorSource)document)
             .DocumentPaginator;
 
+        var lineCount =
+            Math.Max(
+                1,
+                (receiptText ?? string.Empty)
+                    .Split('\n')
+                    .Length);
+
         paginator.PageSize =
-            new Size(302, 1120);
+            new Size(
+                302,
+                Math.Max(
+                    520,
+                    lineCount * 18 + 120));
 
         var writer =
             PrintQueue.CreateXpsDocumentWriter(queue);
