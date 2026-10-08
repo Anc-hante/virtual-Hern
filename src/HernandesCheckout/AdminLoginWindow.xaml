@@ -1,0 +1,138 @@
+<Window x:Class="HernandesCheckout.AdminLoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Acesso administrativo"
+        Width="520"
+        Height="390"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        Background="Transparent"
+        AllowsTransparency="True"
+        ShowInTaskbar="False">
+    <Border Margin="18"
+            Padding="28"
+            Background="White"
+            BorderBrush="#E5E7EB"
+            BorderThickness="1"
+            CornerRadius="24">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="28"
+                              ShadowDepth="8"
+                              Opacity="0.18"/>
+        </Border.Effect>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0">
+                <Border Width="58"
+                        Height="58"
+                        HorizontalAlignment="Left"
+                        Background="#FDEBEC"
+                        CornerRadius="16">
+                    <TextBlock Text="⚙"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="#A7191F"
+                               FontSize="28"
+                               FontWeight="Bold"/>
+                </Border>
+
+                <TextBlock Margin="0,18,0,0"
+                           Text="Área administrativa"
+                           Foreground="#20242A"
+                           FontFamily="Segoe UI Variable Display, Segoe UI"
+                           FontSize="28"
+                           FontWeight="Bold"/>
+
+                <TextBlock Margin="0,5,0,0"
+                           Text="Informe o usuário e a senha para configurar a impressora do totem."
+                           Foreground="#667085"
+                           FontSize="14"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1"
+                        Margin="0,20,0,0">
+                <TextBlock Text="Usuário"
+                           Foreground="#344054"
+                           FontSize="13"
+                           FontWeight="Bold"/>
+
+                <TextBox x:Name="UsernameBox"
+                         Height="48"
+                         Margin="0,6,0,0"
+                         Padding="12,0"
+                         VerticalContentAlignment="Center"
+                         FontSize="17"
+                         BorderBrush="#D0D5DD"
+                         BorderThickness="1"
+                         Background="White"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2"
+                        Margin="0,14,0,0">
+                <TextBlock Text="Senha"
+                           Foreground="#344054"
+                           FontSize="13"
+                           FontWeight="Bold"/>
+
+                <PasswordBox x:Name="PasswordInput"
+                             Height="48"
+                             Margin="0,6,0,0"
+                             Padding="12,0"
+                             VerticalContentAlignment="Center"
+                             FontSize="17"
+                             BorderBrush="#D0D5DD"
+                             BorderThickness="1"
+                             Background="White"
+                             KeyDown="PasswordInput_KeyDown"/>
+            </StackPanel>
+
+            <TextBlock x:Name="ErrorText"
+                       Grid.Row="3"
+                       MinHeight="20"
+                       Margin="0,10,0,0"
+                       Foreground="#B42318"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap"/>
+
+            <Grid Grid.Row="4"
+                  Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="1.3*"/>
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0"
+                        Height="50"
+                        Margin="0,0,6,0"
+                        Content="Cancelar"
+                        Background="#F7F8FA"
+                        Foreground="#303741"
+                        BorderBrush="#D9DEE5"
+                        BorderThickness="1"
+                        FontSize="16"
+                        FontWeight="Bold"
+                        Cursor="Hand"
+                        Click="CancelButton_Click"/>
+
+                <Button Grid.Column="1"
+                        Height="50"
+                        Margin="6,0,0,0"
+                        Content="Entrar"
+                        Style="{StaticResource PrimaryKeyStyle}"
+                        FontSize="16"
+                        Click="LoginButton_Click"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
