@@ -5,25 +5,61 @@ using System.Text.Json;
 
 namespace HernandesCheckout;
 
+public sealed class TotemPrintJob
+{
+    public string JobId { get; init; } = "";
+    public string ReceiptText { get; init; } = "";
+    public bool IsReprint { get; init; }
+    public string OrderNumber { get; init; } = "";
+}
+
 public sealed class TotemApiClient
 {
-    private const string DefaultApiUrl =
-        "https://hernandesvpn.dyndns.org/api/ecommerce/totem/events";
+    private const string DefaultApiBaseUrl =
+        "https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem";
 
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
-    private readonly string _apiUrl;
+    private readonly string _apiBaseUrl;
+    private readonly string _eventsUrl;
     private readonly string _token;
     private readonly string _dataFolder;
     private readonly string _queueFile;
 
     public TotemApiClient()
     {
-        _apiUrl =
+        var configuredBase =
+            Environment.GetEnvironmentVariable(
+                "HERNANDES_TOTEM_API_BASE_URL")
+            ?.Trim();
+
+        var legacyEventsUrl =
             Environment.GetEnvironmentVariable(
                 "HERNANDES_TOTEM_API_URL")
-            ?.Trim()
-            ?? DefaultApiUrl;
+            ?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(configuredBase))
+        {
+            _apiBaseUrl =
+                configuredBase.TrimEnd('/');
+            _eventsUrl =
+                _apiBaseUrl + "/events";
+        }
+        else if (!string.IsNullOrWhiteSpace(legacyEventsUrl))
+        {
+            _eventsUrl = legacyEventsUrl;
+            _apiBaseUrl =
+                legacyEventsUrl.EndsWith("/events",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? legacyEventsUrl[..^"/events".Length]
+                    : legacyEventsUrl.TrimEnd('/');
+        }
+        else
+        {
+            _apiBaseUrl = DefaultApiBaseUrl;
+            _eventsUrl =
+                _apiBaseUrl + "/events";
+        }
 
         _token =
             Environment.GetEnvironmentVariable(
@@ -62,6 +98,9 @@ public sealed class TotemApiClient
     }
 
     public string DeviceId { get; }
+
+    public string PrinterId =>
+        DeviceId + "-PRINTER";
 
     public async Task SendSimpleEventAsync(
         string eventType,
@@ -121,6 +160,124 @@ public sealed class TotemApiClient
         await SendOrQueueAsync(envelope);
     }
 
+    public async Task<TotemPrintJob?> ClaimPrintJobAsync()
+    {
+        try
+        {
+            using var response = await PostJsonAsync(
+                _apiBaseUrl + "/printer/claim",
+                new
+                {
+                    printer_id = PrinterId,
+                    device_id = DeviceId,
+                });
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var json =
+                await response.Content.ReadAsStringAsync();
+
+            using var document =
+                JsonDocument.Parse(json);
+
+            if (!document.RootElement.TryGetProperty(
+                    "job",
+                    out var jobElement) ||
+                jobElement.ValueKind ==
+                    JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            var jobId =
+                jobElement.TryGetProperty(
+                    "job_id",
+                    out var jobIdElement)
+                    ? jobIdElement.GetString() ?? ""
+                    : "";
+
+            var receiptText =
+                jobElement.TryGetProperty(
+                    "receipt_text",
+                    out var receiptElement)
+                    ? receiptElement.GetString() ?? ""
+                    : "";
+
+            var isReprint =
+                jobElement.TryGetProperty(
+                    "is_reprint",
+                    out var reprintElement) &&
+                reprintElement.ValueKind ==
+                    JsonValueKind.True;
+
+            var orderNumber = "";
+
+            if (jobElement.TryGetProperty(
+                    "order",
+                    out var orderElement) &&
+                orderElement.ValueKind ==
+                    JsonValueKind.Object &&
+                orderElement.TryGetProperty(
+                    "order_number",
+                    out var orderNumberElement))
+            {
+                orderNumber =
+                    orderNumberElement.GetString() ?? "";
+            }
+
+            if (string.IsNullOrWhiteSpace(jobId))
+            {
+                return null;
+            }
+
+            return new TotemPrintJob
+            {
+                JobId = jobId,
+                ReceiptText = receiptText,
+                IsReprint = isReprint,
+                OrderNumber = orderNumber,
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task CompletePrintJobAsync(
+        string jobId,
+        bool success,
+        string error = "")
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return;
+        }
+
+        try
+        {
+            using var _ = await PostJsonAsync(
+                _apiBaseUrl +
+                "/printer/jobs/" +
+                Uri.EscapeDataString(jobId) +
+                "/complete",
+                new
+                {
+                    success,
+                    printer_id = PrinterId,
+                    error,
+                });
+        }
+        catch
+        {
+            // A stale claimed job is automatically returned to the queue
+            // by the server after two minutes.
+        }
+    }
+
     public async Task FlushPendingAsync()
     {
         await _sendLock.WaitAsync();
@@ -132,6 +289,34 @@ public sealed class TotemApiClient
         finally
         {
             _sendLock.Release();
+        }
+    }
+
+    private async Task<HttpResponseMessage> PostJsonAsync(
+        string url,
+        object payload)
+    {
+        var json =
+            JsonSerializer.Serialize(payload);
+
+        var request =
+            new HttpRequestMessage(
+                HttpMethod.Post,
+                url)
+            {
+                Content = new StringContent(
+                    json,
+                    Encoding.UTF8,
+                    "application/json"),
+            };
+
+        try
+        {
+            return await _httpClient.SendAsync(request);
+        }
+        finally
+        {
+            request.Dispose();
         }
     }
 
@@ -163,7 +348,7 @@ public sealed class TotemApiClient
                 JsonSerializer.Serialize(envelope);
 
             var sent =
-                await TrySendJsonAsync(json);
+                await TrySendEventJsonAsync(json);
 
             if (!sent)
             {
@@ -213,7 +398,7 @@ public sealed class TotemApiClient
             }
 
             var sent =
-                await TrySendJsonAsync(line);
+                await TrySendEventJsonAsync(line);
 
             if (!sent)
             {
@@ -240,14 +425,14 @@ public sealed class TotemApiClient
         }
     }
 
-    private async Task<bool> TrySendJsonAsync(
+    private async Task<bool> TrySendEventJsonAsync(
         string json)
     {
         try
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Post,
-                _apiUrl);
+                _eventsUrl);
 
             request.Content = new StringContent(
                 json,
