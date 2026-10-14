@@ -4,99 +4,86 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
-const Module = require('node:module');
+const { EventEmitter } = require('node:events');
+const { printWithWindows, SCRIPT_PATH } = require('../windows-printer');
 
-const printerPath = path.join(__dirname, '..', 'printer.js');
-const htmlPath = path.join(__dirname, '..', 'receipt.html');
-
-function loadWithFakePrinter({ failLoad = false } = {}) {
-  const received = {
-    loadFile: null,
-    data: '',
-    options: null,
-    destroyed: false
-  };
-
-  class MockWindow {
-    constructor() {
-      this.webContents = {
-        executeJavaScript: async (script) => {
-          if (script.includes('document.fonts.ready')) return true;
-          const document = {
-            getElementById(id) {
-              assert.equal(id, 'receipt');
-              return {
-                set textContent(value) { received.data = value; }
-              };
-            }
-          };
-          return vm.runInNewContext(script, { document });
-        },
-        print(options, callback) {
-          received.options = options;
-          callback(true);
+function mockSpooler(options = {}) {
+  const calls = [];
+  function spawnFn(executable, args, config) {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new EventEmitter();
+    child.kill = () => {};
+    child.stdin.end = data => {
+      calls.push({
+        executable, args, config,
+        payload: JSON.parse(data)
+      });
+      process.nextTick(() => {
+        if (options.fail) {
+          child.stderr.emit('data', Buffer.from('A impressora nao esta pronta.'));
+          child.emit('close', 1);
+        } else {
+          child.stdout.emit('data', Buffer.from('PRINT_SUBMITTED\n'));
+          child.emit('close', 0);
         }
-      };
-    }
-    async loadFile(file) {
-      received.loadFile = file;
-      if (failLoad) throw new Error('ERR_FAILED (-2) loading data:text/html,...');
-    }
-    isDestroyed() { return received.destroyed; }
-    destroy() { received.destroyed = true; }
+      });
+    };
+    return child;
   }
-
-  const mod = new Module(printerPath);
-  mod.filename = printerPath;
-  mod.paths = Module._nodeModulePaths(path.dirname(printerPath));
-  const nativeRequire = mod.require.bind(mod);
-  mod.require = (name) => {
-    if (name === 'electron') return { BrowserWindow: MockWindow };
-    if (name === './api') return {};
-    if (name === './storage') return {};
-    return nativeRequire(name);
-  };
-  mod._compile(fs.readFileSync(printerPath, 'utf8'), printerPath);
-  return { printer: mod.exports, received };
+  return { calls, spawnFn };
 }
 
-test('receipt renders from local file, not a data URL, on ELGIN i8', async () => {
-  assert.equal(fs.existsSync(htmlPath), true);
-  const { printer, received } = loadWithFakePrinter();
-  await printer.printTest('ELGIN i8');
-  assert.equal(received.loadFile, htmlPath);
-  assert.match(received.data, /ELGIN i8/);
-  assert.match(received.data, /TESTE DE IMPRESSAO/);
-  assert.equal(received.options.deviceName, 'ELGIN i8');
-  assert.equal(received.options.silent, true);
-  assert.equal(received.options.pageSize.width, 80000);
-  assert.equal(received.destroyed, true);
+test('ELGIN i8 uses Windows PowerShell printer driver, not Chromium HTML', async () => {
+  const mock = mockSpooler();
+  const result = await printWithWindows('ELGIN i8', 'CUPOM TESTE\nR$ 10,00', {
+    platform: 'win32', spawnFn: mock.spawnFn
+  });
+  assert.equal(result.status, 'queued');
+  assert.equal(mock.calls.length, 1);
+  const request = mock.calls[0];
+  assert.equal(request.executable, 'powershell.exe');
+  assert.equal(request.payload.printerName, 'ELGIN i8');
+  assert.equal(request.payload.text, 'CUPOM TESTE\nR$ 10,00');
+  assert.equal(request.config.windowsHide, true);
+  const script = Buffer.from(request.args.at(-1), 'base64').toString('utf16le');
+  assert.match(script, /System\.Drawing\.Printing\.PrintDocument/);
+  assert.match(script, /IsValid/);
+  assert.doesNotMatch(script, /data:text\/html/);
 });
 
-test('remote receipt is inserted as inert text, not HTML or JavaScript', async () => {
-  const { printer, received } = loadWithFakePrinter();
-  const malicious = '<script>alert("x")</script> & café \\u263A';
-  await printer.printReceipt('ELGIN i8', malicious);
-  assert.equal(received.data, malicious);
-  assert.equal(received.loadFile, htmlPath);
+test('printing accepts customer Unicode, quotes and text without command injection', async () => {
+  const mock = mockSpooler();
+  const malicious = 'João "da Silva"  São Paulo\n<script>alert(1)</script>\n$Env:PATH';
+  await printWithWindows('ELGIN i8', malicious, {
+    platform: 'win32', spawnFn: mock.spawnFn
+  });
+  assert.equal(mock.calls[0].payload.text, malicious);
+  const script = Buffer.from(mock.calls[0].args.at(-1), 'base64').toString('utf16le');
+  assert.doesNotMatch(script, /João|<script>|PATH/);
 });
 
-test('loading error is short and does not show encoded HTML to customer', async () => {
-  const { printer, received } = loadWithFakePrinter({ failLoad: true });
+test('printer driver errors are reported instead of falsely confirming printing', async () => {
+  const mock = mockSpooler({ fail: true });
   await assert.rejects(
-    printer.printTest('ELGIN i8'),
-    (error) => {
-      assert.match(error.message, /Não foi possível preparar o cupom/);
-      assert.doesNotMatch(error.message, /data:text\/html|ERR_FAILED/);
-      return true;
-    }
+    printWithWindows('ELGIN i8', 'Teste', {
+      platform: 'win32', spawnFn: mock.spawnFn
+    }),
+    /O Windows não conseguiu imprimir na ELGIN i8/
   );
-  assert.equal(received.destroyed, true);
 });
 
-test('blank receipt fails before making a print job', async () => {
-  const { printer, received } = loadWithFakePrinter();
-  await assert.rejects(printer.printReceipt('ELGIN i8', '   '), /cupom está vazio/);
-  assert.equal(received.loadFile, null);
+test('print method refuses empty receipts or missing printer', async () => {
+  await assert.rejects(printWithWindows('', 'Teste'), /Selecione uma impressora/);
+  await assert.rejects(printWithWindows('ELGIN i8', '   '), /cupom está vazio/);
+});
+
+test('native spooler script is shipped with the application', () => {
+  assert.ok(fs.existsSync(SCRIPT_PATH));
+  const printerSource = fs.readFileSync(
+    path.join(__dirname, '..', 'printer.js'), 'utf8'
+  );
+  assert.match(printerSource, /printWithWindows\(printerName, content\)/);
+  assert.doesNotMatch(printerSource, /new BrowserWindow|loadFile|loadURL|receiptTextScript/);
 });
