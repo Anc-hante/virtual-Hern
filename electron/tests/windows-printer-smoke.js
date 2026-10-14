@@ -4,6 +4,8 @@
 // initialization, but deliberately select a nonexistent printer so no
 // physical paper or Microsoft Print to PDF dialog is ever triggered.
 const { printWithWindows } = require('../windows-printer');
+const QRCode = require('qrcode');
+const { REGISTER_URL } = require('../receipt-format');
 
 (async () => {
   if (process.platform !== 'win32') {
@@ -11,9 +13,11 @@ const { printWithWindows } = require('../windows-printer');
     return;
   }
   try {
+    const qrPngBase64 = (await QRCode.toBuffer(REGISTER_URL)).toString('base64');
     await printWithWindows(
       'HERNANDES_NONEXISTENT_PRINTER_FOR_CI',
-      'CUPOM DE VALIDACAO\nSEM IMPRESSAO REAL'
+      'CUPOM DE VALIDACAO\nSEM IMPRESSAO REAL',
+      { qrPngBase64 }
     );
     console.error('ERROR: nonexistent printer was accepted.');
     process.exitCode = 1;
