@@ -2,69 +2,48 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-echo ============================================
-echo   HERNANDES CHECKOUT - WEBVIEW2
-echo ============================================
+echo ================================================
+echo   HERNANDES CHECKOUT - ELECTRON
+echo ================================================
 echo.
 
-set "DOTNET=%CD%\.dotnet\dotnet.exe"
+where node >nul 2>nul
+if errorlevel 1 goto :node_missing
+where npm >nul 2>nul
+if errorlevel 1 goto :node_missing
 
-if not exist "%DOTNET%" (
-  where dotnet >nul 2>nul
-  if not errorlevel 1 (
-    set "DOTNET=dotnet"
-  )
-)
-
-if not exist "%DOTNET%" if "%DOTNET%"=="%CD%\.dotnet\dotnet.exe" (
-  echo [1/4] Baixando .NET SDK 10 localmente...
-  if not exist ".dotnet" mkdir ".dotnet"
-
-  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$ErrorActionPreference='Stop'; " ^
-    "Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1; " ^
-    "& .\dotnet-install.ps1 -Channel 10.0 -InstallDir .\.dotnet -NoPath"
-
-  if errorlevel 1 goto :error
-
-  if exist "dotnet-install.ps1" del /q "dotnet-install.ps1"
-)
-
-echo [2/4] Restaurando dependencias...
-"%DOTNET%" restore "src\HernandesCheckout\HernandesCheckout.csproj"
+echo [1/3] Instalando dependencias Electron...
+call npm install --no-audit --no-fund
 if errorlevel 1 goto :error
 
-echo [3/4] Limpando build anterior...
-if exist dist rmdir /s /q dist
+echo [2/3] Verificando codigo...
+call npm run check
+if errorlevel 1 goto :error
 
-echo [4/4] Gerando HernandesCheckout.exe...
-"%DOTNET%" publish "src\HernandesCheckout\HernandesCheckout.csproj" ^
-  -c Release ^
-  -r win-x64 ^
-  --self-contained true ^
-  -o dist ^
-  /p:PublishSingleFile=true ^
-  /p:IncludeNativeLibrariesForSelfExtract=true ^
-  /p:EnableCompressionInSingleFile=true
-
+echo [3/3] Gerando aplicativo Windows (EXE portatil)...
+call npm run build
 if errorlevel 1 goto :error
 
 if not exist "dist\HernandesCheckout.exe" goto :error
-
 echo.
-echo ============================================
-echo PRONTO!
-echo.
-echo Aplicativo:
-echo %CD%\dist\HernandesCheckout.exe
-echo ============================================
+echo ================================================
+echo  PRONTO - ELECTRON
+echo  %CD%\dist\HernandesCheckout.exe
+echo ================================================
 explorer "%CD%\dist"
 pause
 exit /b 0
 
+:node_missing
+echo.
+echo [ERRO] E necessario instalar Node.js LTS (inclui npm).
+echo https://nodejs.org/
+pause
+exit /b 1
+
 :error
 echo.
-echo [ERRO] Nao foi possivel gerar o checkout.
-echo Tire uma foto desta tela ou copie o erro.
+echo [ERRO] Falha na compilacao do Electron.
+echo Copie a mensagem de erro acima.
 pause
 exit /b 1
