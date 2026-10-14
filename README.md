@@ -124,3 +124,29 @@ O projeto preserva arquivos de contingência locais em
 
 Falhas do e-commerce ou da impressora devem ser investigadas por logs e por
 testes reais no equipamento antes de considerar o fluxo de impressão concluído.
+
+## Cupom grande e QR Code (ELGIN i8)
+
+O comprovante usa bobina de **80 mm**, impressão pelo driver instalado do Windows
+e um QR Code gerado localmente (sem depender da internet para criar a imagem).
+Ele aponta sempre para:
+
+`https://www.grupohernandes.com.br/cadastrar`
+
+O número impresso é o **NUMPED real do WinThor**. O backend só libera o cupom
+após reconciliar o pedido do cliente exclusivo do totem, código **12678**.
+Pedidos com número provisório não são impressos.
+
+Na engrenagem ⚙, faça login como administrador, selecione a impressora e toque
+em **Visualizar modelo completo do cupom**. O botão **Testar impressão** também
+abre a prévia e imprime uma demonstração com itens, valores fictícios e o QR
+real. Essa demonstração aparece identificada para não ser confundida com venda.
+
+Se o teste envia ao Windows mas não sai papel, examine a fila de impressão,
+driver ELGIN i8 e configuração de bobina 80 mm no Windows. O status de
+"enviado" indica aceitação pelo spooler; o aplicativo não possui sensor para
+confirmar a saída física do papel.
+
+O teclado Electron é acionado pelo `pointerdown` no próprio Chromium, sem
+redimensionar o navegador. O formulário de nome/telefone é deslocado acima
+dele quando necessário.
