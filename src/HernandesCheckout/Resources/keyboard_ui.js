@@ -108,6 +108,7 @@
   function hide() {
     if (host) host.style.display = 'none';
   }
+  window.__hernandesHideKeyboard = hide;
   function show(el) {
     make();
     if (!host) return;
