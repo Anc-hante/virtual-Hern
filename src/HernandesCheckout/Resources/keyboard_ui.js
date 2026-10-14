@@ -1,5 +1,10 @@
 (() => {
   if (window.__hernandesKeyboardUiInstalled) return;
+  const logic = window.__hernandesKeyboardLogic;
+  if (!logic) {
+    console.error('[Totem] Keyboard logic did not initialize.');
+    return;
+  }
   window.__hernandesKeyboardUiInstalled = true;
 
   let target = null;
@@ -7,153 +12,238 @@
   let shifted = false;
   let host = null;
   let shadow = null;
+  let visible = false;
+  let scrollFrame = 0;
 
-  const inputLike = el => {
-    if (!el || !el.matches) return false;
-    if (el.isContentEditable) return true;
-    if (el.matches('textarea:not([disabled]):not([readonly])')) return true;
-    if (!el.matches('input:not([disabled]):not([readonly])')) return false;
-    return !/^(button|submit|reset|radio|checkbox|file|hidden|range|color|date|time|week|month|datetime-local)$/i
-      .test(el.type || 'text');
-  };
-  const getKind = el => {
-    const type = (el.type || '').toLowerCase();
-    const mode = (el.inputMode || '').toLowerCase();
-    if (['number','tel'].includes(type) || ['numeric','decimal','tel'].includes(mode)) return 'numeric';
-    if (type === 'email' || mode === 'email') return 'email';
-    return 'text';
-  };
-  const rows = () => kind === 'numeric'
-    ? [
-      ['1','2','3'], ['4','5','6'], ['7','8','9'],
-      ['APAGAR','0','OK ↵']
-    ]
-    : [
+  function layout() {
+    if (kind === 'numeric') {
+      return [
+        ['1', '2', '3'],
+        ['4', '5', '6'],
+        ['7', '8', '9'],
+        ['APAGAR', '0', 'OK ↵']
+      ];
+    }
+
+    return [
       ['1','2','3','4','5','6','7','8','9','0'],
-      [...'QWERTYUIOP'], [...'ASDFGHJKLÇ'],
-      ['⇧ Shift',...'ZXCVBNM','APAGAR'],
-      [kind === 'email' ? '@':'/', ',', '.', '-', '@', '#', 'ESPAÇO','OK ↵']
+      [...'QWERTYUIOP'],
+      [...'ASDFGHJKLÇ'],
+      ['⇧ Shift', ...'ZXCVBNM', 'APAGAR'],
+      [kind === 'email' ? '@' : '/', ',', '.', '-', '@', '#', 'ESPAÇO', 'OK ↵']
     ];
+  }
 
-  function make() {
+  function init() {
     if (host || !document.body) return;
     host = document.createElement('div');
     host.id = '__hernandes-keyboard-host';
-    host.style.cssText = 'position:fixed;inset:auto 0 0;z-index:2147483647;display:none;pointer-events:auto';
-    shadow = host.attachShadow({ mode:'open' });
+    host.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;display:none;pointer-events:auto';
+    shadow = host.attachShadow({ mode: 'open' });
+
     shadow.innerHTML = `
       <style>
-        :host { all:initial; color-scheme:light; }
-        .keyboard{box-sizing:border-box;background:#f7f8fa;border-top:3px solid #a7191f;
-          box-shadow:0 -14px 35px rgba(20,22,28,.15);padding:8px 12px 12px;
-          font-family:Segoe UI,Arial,sans-serif;touch-action:manipulation}
-        header{display:flex;justify-content:space-between;align-items:center;
-          height:28px;color:#8c262a;font:bold 12px Segoe UI,Arial;letter-spacing:.04em}
-        header button{width:36px;height:27px;border:0;background:#eceef1;color:#333;
-          border-radius:8px;font-size:20px}
-        .keys{display:flex;flex-direction:column;gap:5px}
-        .line{display:flex;justify-content:center;gap:5px}
-        .key{flex:1 1 0;min-width:0;height:43px;padding:0 3px;border:1px solid #d5dbe3;
-          background:#fff;color:#25303b;border-radius:9px;
-          font:600 16px Segoe UI,Arial;cursor:pointer;touch-action:manipulation}
-        .key:active{background:#e0e4e9;transform:translateY(1px)}
-        .special{background:#e7ebf0;font-size:12px}
-        .primary{background:#a7191f;color:#fff;border-color:#a7191f;font-size:14px}
-        .wide{flex:3 1 0}
-        .shifted{background:#fdebec;border-color:#a7191f}
-        @media (min-height:900px){ .key{height:51px} }
+        :host { color-scheme: light; }
+        *, *::before, *::after { box-sizing: border-box; }
+        .keyboard {
+          padding: 8px 12px max(12px, env(safe-area-inset-bottom));
+          background: #f6f7fa;
+          border-top: 2px solid #a7191f;
+          box-shadow: 0 -10px 26px rgba(20,22,28,.16);
+          font-family: "Segoe UI", Arial, sans-serif;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
+        }
+        header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          height: 28px;
+          margin-bottom: 5px;
+          font: 700 12px "Segoe UI", Arial, sans-serif;
+          letter-spacing: .03em;
+          color: #8a262b;
+        }
+        button {
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        #close {
+          width: 44px;
+          height: 30px;
+          border: 0;
+          border-radius: 8px;
+          color: #39414f;
+          background: #e9ebef;
+          font: 700 21px "Segoe UI", Arial, sans-serif;
+        }
+        .keys { display: flex; flex-direction: column; gap: 5px; }
+        .line { display: flex; gap: 5px; width: 100%; }
+        .key {
+          flex: 1 1 0;
+          min-width: 0;
+          height: clamp(42px, 5.7vh, 58px);
+          padding: 0 3px;
+          border: 1px solid #d4d9e1;
+          border-radius: 9px;
+          color: #28313d;
+          background: white;
+          font: 600 clamp(14px, 1.7vw, 18px) "Segoe UI", Arial, sans-serif;
+        }
+        .key:active { background: #e2e7ed; }
+        .special { background: #e8ebf1; font-size: 13px; }
+        .primary { background: #a7191f; color: white; border-color: #a7191f; }
+        .wide { flex: 3 1 0; }
+        .shifted { background: #fdebec; border-color: #a7191f; }
+        @media (max-width: 800px) {
+          .keyboard { padding-left: 5px; padding-right: 5px; }
+          .line { gap: 3px; }
+          .key { font-size: 13px; }
+        }
       </style>
-      <div class="keyboard">
-        <header><span>HERNANDES • TECLADO VIRTUAL</span>
-          <button id="close" aria-label="Fechar teclado">×</button></header>
+      <div class="keyboard" role="group" aria-label="Teclado virtual">
+        <header>
+          <span>HERNANDES · TECLADO VIRTUAL</span>
+          <button id="close" type="button" aria-label="Fechar teclado">×</button>
+        </header>
         <div id="rows" class="keys"></div>
       </div>`;
-    shadow.getElementById('close').addEventListener('click', hide);
-    shadow.addEventListener('pointerdown', e => e.preventDefault());
-    shadow.getElementById('rows').addEventListener('click', e => {
-      const button = e.target.closest('button[data-value]');
-      if (!button) return;
-      const label = button.dataset.value;
-      if (label === '⇧ Shift') { shifted = !shifted; draw(); return; }
-      if (label === 'APAGAR') { type('backspace',''); return; }
-      if (label === 'OK ↵') { type('enter',''); hide(); return; }
-      const value = label === 'ESPAÇO' ? ' ' : (shifted ? label : label.toLowerCase());
-      type('text',value);
+
+    // Keep the original input focused so every key acts on the same caret
+    // and touch does not transfer focus to a keyboard button.
+    shadow.addEventListener('pointerdown', event => {
+      if (event.target.closest?.('button')) event.preventDefault();
+    }, true);
+
+    shadow.getElementById('close').addEventListener('click', () => hide(true));
+    shadow.getElementById('rows').addEventListener('click', event => {
+      const key = event.target.closest?.('button[data-value]');
+      if (!key || !target || !target.isConnected) {
+        hide(true);
+        return;
+      }
+      const action = key.dataset.value;
+      if (action === '⇧ Shift') {
+        shifted = !shifted;
+        draw();
+        return;
+      }
+      if (action === 'APAGAR') {
+        logic.insert(target, 'backspace');
+        return;
+      }
+      if (action === 'OK ↵') {
+        logic.sendEnter(target);
+        hide(true);
+        return;
+      }
+      const value = action === 'ESPAÇO' ? ' ' :
+        (shifted ? action : action.toLowerCase());
+      logic.insert(target, 'text', value);
+      if (shifted && /^[A-ZÇ]$/i.test(value)) {
+        shifted = false;
+        draw();
+      }
     });
     document.body.appendChild(host);
   }
+
   function draw() {
     if (!shadow) return;
-    const container = shadow.getElementById('rows');
-    container.replaceChildren();
-    for (const line of rows()) {
-      const row = document.createElement('div');
-      row.className = 'line';
-      for (const char of line) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.dataset.value = char;
-        b.textContent = char.length === 1 && /[A-ZÇ]/.test(char)
-          ? (shifted ? char : char.toLowerCase()) : char;
-        b.className = 'key' +
-          (['APAGAR','⇧ Shift'].includes(char) ? ' special' : '') +
-          (char === 'OK ↵' ? ' primary' : '') +
-          (char === 'ESPAÇO' ? ' wide' : '') +
-          (char === '⇧ Shift' && shifted ? ' shifted' : '');
-        row.appendChild(b);
+    const rows = shadow.getElementById('rows');
+    rows.replaceChildren();
+    for (const items of layout()) {
+      const line = document.createElement('div');
+      line.className = 'line';
+      for (const value of items) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.value = value;
+        button.textContent = value.length === 1 && /^[A-ZÇ]$/.test(value)
+          ? (shifted ? value : value.toLowerCase()) : value;
+        const special = ['⇧ Shift', 'APAGAR'].includes(value);
+        button.className = 'key' +
+          (special ? ' special' : '') +
+          (value === 'OK ↵' ? ' primary' : '') +
+          (value === 'ESPAÇO' ? ' wide' : '') +
+          (value === '⇧ Shift' && shifted ? ' shifted' : '');
+        line.appendChild(button);
       }
-      container.appendChild(row);
+      rows.appendChild(line);
     }
-  }
-  function hide() {
-    if (host) host.style.display = 'none';
-  }
-  window.__hernandesHideKeyboard = hide;
-  function show(el) {
-    make();
-    if (!host) return;
-    target = el;
-    const next = getKind(el);
-    if (kind !== next) { kind = next; shifted = false; }
-    draw();
-    host.style.display = 'block';
-    // Overlay: do not resize the native browser surface.
-    requestAnimationFrame(() => {
-      if (!target || !target.isConnected) return;
-      const rect = target.getBoundingClientRect();
-      const available = window.innerHeight - host.offsetHeight - 15;
-      if (rect.bottom > available) {
-        window.scrollBy({ top: rect.bottom - available + 24, behavior:'instant' });
-      }
-    });
-  }
-  function type(action,text) {
-    if (!target || !target.isConnected) return;
-    if (typeof window.__hernandesType === 'function' &&
-        window.__hernandesType(action,text)) return;
-    // Local administrative form uses this fallback (no site bridge).
-    if (!target.matches('input,textarea')) return;
-    const start = target.selectionStart ?? target.value.length;
-    const end = target.selectionEnd ?? start;
-    if (action === 'text') {
-      target.setRangeText(text, start, end, 'end');
-    } else if (action === 'backspace') {
-      target.setRangeText('', start === end ? Math.max(0,start-1) : start, end, 'end');
-    } else if (action === 'enter') {
-      target.form?.requestSubmit?.();
-      return;
-    }
-    target.dispatchEvent(new InputEvent('input',{bubbles:true,data:text}));
   }
 
-  document.addEventListener('focusin', e => {
-    if (inputLike(e.target)) show(e.target);
-  },true);
-  document.addEventListener('pointerdown', e => {
-    if (!host || host.style.display === 'none') return;
-    if (e.composedPath().includes(host)) return;
-    if (!inputLike(e.target)) hide();
-  },true);
-  // Some touchscreen targets are focused before our script is injected.
-  if (inputLike(document.activeElement)) show(document.activeElement);
+  function hide(clearTarget = false) {
+    visible = false;
+    if (host) host.style.display = 'none';
+    if (clearTarget) target = null;
+    if (scrollFrame) cancelAnimationFrame(scrollFrame);
+    scrollFrame = 0;
+  }
+  window.__hernandesHideKeyboard = () => hide(true);
+
+  function revealField() {
+    if (!visible || !target || !target.isConnected || !host) return;
+    const edge = window.innerHeight - host.getBoundingClientRect().height - 12;
+    const rect = target.getBoundingClientRect();
+    if (rect.bottom <= edge && rect.top >= 0) return;
+    const offset = rect.bottom - edge + 16;
+    if (offset <= 0) return;
+
+    // The administrator form scrolls inside #surface. Product dialogs may
+    // also have their own scroll container, so use the nearest one.
+    let parent = target.parentElement;
+    while (parent && parent !== document.body) {
+      const style = window.getComputedStyle(parent);
+      if (/(auto|scroll)/.test(style.overflowY) &&
+          parent.scrollHeight > parent.clientHeight + 2) {
+        parent.scrollTop += offset;
+        return;
+      }
+      parent = parent.parentElement;
+    }
+    window.scrollBy(0, offset);
+  }
+
+  function show(element) {
+    if (!logic.editable(element)) return;
+    init();
+    if (!host) return;
+    const nextKind = logic.keyboardKind(element);
+    const redraw = !visible || nextKind !== kind;
+    target = element;
+    if (nextKind !== kind) {
+      kind = nextKind;
+      shifted = false;
+    }
+    if (redraw) draw();
+    if (!visible) {
+      host.style.display = 'block';
+      visible = true;
+    }
+    if (scrollFrame) cancelAnimationFrame(scrollFrame);
+    scrollFrame = requestAnimationFrame(revealField);
+  }
+
+  document.addEventListener('focusin', event => {
+    if (logic.editable(event.target)) show(event.target);
+  }, true);
+
+  // Pointerdown also opens the keyboard when the user taps an ALREADY
+  // focused field after dismissing it. focusin alone never fired there.
+  document.addEventListener('pointerdown', event => {
+    if (host && event.composedPath().includes(host)) return;
+    if (logic.editable(event.target)) {
+      show(event.target);
+    } else if (visible) {
+      hide(true);
+    }
+  }, true);
+
+  if (logic.editable(document.activeElement)) {
+    show(document.activeElement);
+  }
 })();
