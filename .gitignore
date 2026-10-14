@@ -12,3 +12,9 @@ __pycache__/
 *.pyc
 build/
 *.spec
+
+# Electron build artifacts
+node_modules/
+*.log
+*.tmp
+out/
