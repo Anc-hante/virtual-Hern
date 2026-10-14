@@ -84,6 +84,18 @@
           <button id="printer-refresh" class="outline" type="button">↻ Atualizar lista</button>
         </div>
         <div id="printer-list" class="printer-list" role="radiogroup" aria-label="Impressoras instaladas"></div>
+        <button id="receipt-preview-button" class="outline" type="button" style="margin-top:12px;width:100%">
+          👁 Visualizar modelo completo do cupom (80 mm + QR Code)
+        </button>
+        <div id="receipt-preview-panel" class="receipt-preview-panel" hidden>
+          <p class="preview-warning">DEMONSTRAÇÃO — não é uma venda. O cupom real usa o NUMPED do WinThor.</p>
+          <div class="receipt-paper">
+            <pre id="receipt-preview-text"></pre>
+            <img id="receipt-preview-qr" alt="QR Code de cadastro Hernandes" width="172" height="172"/>
+            <strong>CADASTRE-SE NO GRUPO HERNANDES</strong>
+            <span>grupohernandes.com.br/cadastrar</span>
+          </div>
+        </div>
         <p id="printer-message" class="hint" role="status"></p>
         <div class="actions">
           <button id="printer-test" class="button secondary" type="button" disabled>🧾 Testar impressão</button>
