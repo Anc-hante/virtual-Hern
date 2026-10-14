@@ -68,6 +68,9 @@ class PrintWorker {
     this.contents = contents;
     this.timer = null;
     this.busy = false;
+    this.lastPrinterName = '';
+    this.printerAvailable = false;
+    this.nextPrinterCheck = 0;
   }
   start() {
     if (this.timer) return;
@@ -85,8 +88,13 @@ class PrintWorker {
       const chosen = storage.selectedPrinter() ||
         process.env.HERNANDES_TOTEM_PRINTER_NAME || '';
       if (!chosen) return;
-      const printers = await installedPrinters(this.contents);
-      if (!printers.some(p => p.name === chosen)) return;
+      if (chosen !== this.lastPrinterName || Date.now() >= this.nextPrinterCheck) {
+        const printers = await installedPrinters(this.contents);
+        this.printerAvailable = printers.some(p => p.name === chosen);
+        this.lastPrinterName = chosen;
+        this.nextPrinterCheck = Date.now() + 60000;
+      }
+      if (!this.printerAvailable) return;
 
       await api.flush();
       const job = await api.claim();
