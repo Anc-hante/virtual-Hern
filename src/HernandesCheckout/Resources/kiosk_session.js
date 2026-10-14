@@ -14,7 +14,6 @@
     'button[data-id-produto][data-orcamento]'
   ].join(',');
 
-  let lastActivityPost = 0;
   let resetAttempts = 0;
   let resetInterval = null;
 
@@ -78,29 +77,6 @@
       }
     };
   };
-
-  const reportActivity = () => {
-    const now = Date.now();
-    if (now - lastActivityPost < 1500) return;
-    lastActivityPost = now;
-
-    post({
-      type: 'kiosk',
-      action: 'activity'
-    });
-  };
-
-  for (const eventName of [
-    'pointerdown',
-    'keydown',
-    'input'
-  ]) {
-    document.addEventListener(
-      eventName,
-      reportActivity,
-      { capture: true, passive: true }
-    );
-  }
 
   const readState = () => {
     try {
@@ -457,7 +433,6 @@
     `;
 
     document.body.appendChild(overlay);
-    reportActivity();
 
     return overlay;
   };
@@ -505,8 +480,7 @@
         });
 
         overlay.remove();
-        reportActivity();
-        replayAdd(button);
+            replayAdd(button);
       }, { once: true });
 
     content
@@ -648,8 +622,7 @@
         });
 
         overlay.remove();
-        reportActivity();
-        replayAdd(button);
+            replayAdd(button);
       });
   };
 
@@ -657,7 +630,6 @@
     const button = event.target.closest?.(ADD_SELECTOR);
     if (!button) return;
 
-    reportActivity();
 
     if (button.dataset.hernandesKioskBypass === '1') {
       delete button.dataset.hernandesKioskBypass;
