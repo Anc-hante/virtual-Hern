@@ -96,7 +96,11 @@ function display(state) {
     $('admin-pass').value = '';
     $('login-error').textContent = '';
   }
-  if (next === 'printers' && previous !== 'printers') void loadPrinters();
+  if (next === 'printers' && previous !== 'printers') {
+    $('receipt-preview-panel').hidden = true;
+    $('receipt-preview-button').textContent = '👁 Visualizar modelo completo do cupom (80 mm + QR Code)';
+    void loadPrinters();
+  }
   // Don't autofocus login: virtual keyboard should open only when asked.
 }
 window.kiosk.onState(display);
@@ -122,11 +126,33 @@ $('login-form').onsubmit = async event => {
   if (!result.ok) $('login-error').textContent = result.error || 'Não autorizado.';
   busy = false;
 };
+async function showReceiptPreview(forceOpen = false) {
+  const panel = $('receipt-preview-panel');
+  if (!forceOpen && !panel.hidden) {
+    panel.hidden = true;
+    $('receipt-preview-button').textContent = '👁 Visualizar modelo completo do cupom (80 mm + QR Code)';
+    return;
+  }
+
+  const result = await invoke('admin:preview');
+  if (!result.ok) {
+    setMessage(result.error || 'Nao foi possivel visualizar o cupom.', true);
+    return;
+  }
+
+  $('receipt-preview-text').textContent = result.text || '';
+  $('receipt-preview-qr').src = result.qrDataUrl || '';
+  panel.hidden = false;
+  $('receipt-preview-button').textContent = 'Ocultar modelo do cupom';
+}
+$('receipt-preview-button').onclick = () => void showReceiptPreview();
+
 $('printer-test').onclick = async () => {
   if (!chosenPrinter || busy) return;
   busy = true;
   $('printer-test').disabled = true;
-  setMessage('Enviando teste à impressora…');
+  setMessage('Gerando cupom de teste com QR Code…');
+  await showReceiptPreview(true);
   const result = await invoke('admin:test',{name:chosenPrinter});
   setMessage(result.message || result.error || 'Falha de impressão.',!result.ok);
   $('printer-test').disabled = false;
