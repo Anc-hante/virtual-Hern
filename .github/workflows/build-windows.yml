@@ -39,6 +39,21 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Invalid JS: $($_.FullName)" }
           }
 
+      - name: Validate Windows native printer script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "electron/printing/print-receipt.ps1"),
+            [ref]$tokens, [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | Format-List
+            throw "Invalid native printer PowerShell script"
+          }
+          Write-Host "Native receipt printing script syntax OK"
+
       - name: Build portable Windows EXE
         shell: pwsh
         env:
