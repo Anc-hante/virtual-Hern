@@ -14,6 +14,7 @@
   let shadow = null;
   let visible = false;
   let scrollFrame = 0;
+  let gateOriginalStyles = null;
 
   function layout() {
     if (kind === 'numeric') {
@@ -112,20 +113,24 @@
         <div id="rows" class="keys"></div>
       </div>`;
 
-    // Keep the original input focused so every key acts on the same caret
-    // and touch does not transfer focus to a keyboard button.
-    shadow.addEventListener('pointerdown', event => {
-      if (event.target.closest?.('button')) event.preventDefault();
-    }, true);
-
-    shadow.getElementById('close').addEventListener('click', () => hide(true));
-    shadow.getElementById('rows').addEventListener('click', event => {
-      const key = event.target.closest?.('button[data-value]');
-      if (!key || !target || !target.isConnected) {
+    // Windows touch produces pointer events reliably, but synthetic click
+    // may be suppressed after preventDefault(pointerdown). Handle a key
+    // ONCE on pointerdown, without letting Chromium move focus away from
+    // the customer's input. This also prevents double characters.
+    const activateKey = (key) => {
+      if (!key) return;
+      const action = key.dataset.value;
+      if (action === '✕') {
         hide(true);
         return;
       }
-      const action = key.dataset.value;
+      if (!target || !target.isConnected || !logic.editable(target)) {
+        hide(true);
+        return;
+      }
+      // Input can be in a centered fixed modal, so do not trigger scroll.
+      try { target.focus({ preventScroll: true }); } catch (_) {}
+
       if (action === '⇧ Shift') {
         shifted = !shifted;
         draw();
@@ -140,6 +145,7 @@
         hide(true);
         return;
       }
+
       const value = action === 'ESPAÇO' ? ' ' :
         (shifted ? action : action.toLowerCase());
       logic.insert(target, 'text', value);
@@ -147,7 +153,29 @@
         shifted = false;
         draw();
       }
+    };
+
+    shadow.addEventListener('pointerdown', event => {
+      const key = event.target.closest?.('button');
+      if (!key) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (key.id === 'close') {
+        hide(true);
+      } else {
+        activateKey(key);
+      }
+    }, true);
+
+    // Keyboard activation (Enter/Space on a focused button) still works.
+    // Touch-generated clicks have detail > 0 and are handled above.
+    shadow.addEventListener('click', event => {
+      if (event.detail !== 0) return;
+      const key = event.target.closest?.('button');
+      if (key?.id === 'close') hide(true);
+      else activateKey(key);
     });
+
     document.body.appendChild(host);
   }
 
@@ -177,6 +205,13 @@
   }
 
   function hide(clearTarget = false) {
+    if (gateOriginalStyles?.element?.isConnected) {
+      const gate = gateOriginalStyles.element;
+      gate.style.placeItems = gateOriginalStyles.placeItems;
+      gate.style.overflowY = gateOriginalStyles.overflowY;
+      gate.style.paddingBottom = gateOriginalStyles.paddingBottom;
+    }
+    gateOriginalStyles = null;
     visible = false;
     if (host) host.style.display = 'none';
     if (clearTarget) target = null;
@@ -212,6 +247,21 @@
     if (!logic.editable(element)) return;
     init();
     if (!host) return;
+    const gate = document.getElementById('__hernandes-customer-gate');
+    if (gate && gateOriginalStyles?.element !== gate) {
+      gateOriginalStyles = {
+        element: gate,
+        placeItems: gate.style.placeItems,
+        overflowY: gate.style.overflowY,
+        paddingBottom: gate.style.paddingBottom
+      };
+      // Fixed customer modal previously remained vertically centered
+      // underneath the keyboard, obscuring telephone/name fields.
+      gate.style.placeItems = 'start center';
+      gate.style.overflowY = 'auto';
+      gate.style.paddingBottom = '290px';
+    }
+
     const nextKind = logic.keyboardKind(element);
     const redraw = !visible || nextKind !== kind;
     target = element;
@@ -228,16 +278,22 @@
     scrollFrame = requestAnimationFrame(revealField);
   }
 
+  const editableFromEvent = event =>
+    (event.composedPath?.() || []).find(node => logic.editable(node)) ||
+    (logic.editable(event.target) ? event.target : null);
+
   document.addEventListener('focusin', event => {
-    if (logic.editable(event.target)) show(event.target);
+    const field = editableFromEvent(event);
+    if (field) show(field);
   }, true);
 
   // Pointerdown also opens the keyboard when the user taps an ALREADY
   // focused field after dismissing it. focusin alone never fired there.
   document.addEventListener('pointerdown', event => {
     if (host && event.composedPath().includes(host)) return;
-    if (logic.editable(event.target)) {
-      show(event.target);
+    const field = editableFromEvent(event);
+    if (field) {
+      show(field);
     } else if (visible) {
       hide(true);
     }
