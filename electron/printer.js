@@ -1,61 +1,16 @@
 'use strict';
-const { BrowserWindow } = require('electron');
-const path = require('node:path');
+const { printWithWindows } = require('./windows-printer');
 const storage = require('./storage');
 const api = require('./api');
 
-const RECEIPT_TEMPLATE = path.join(__dirname, 'receipt.html');
-
-// Set plain text into a local, static document. Do not navigate to data:
-// URLs: those fail with ERR_FAILED (-2) on some Windows/Electron setups.
-function receiptTextScript(content) {
-  const text = String(content ?? '').slice(0, 30000);
-  return 'document.getElementById("receipt").textContent = ' +
-    JSON.stringify(text) + ';';
-}
 async function installedPrinters(contents) {
   return contents.getPrintersAsync();
 }
 async function printReceipt(printerName, content) {
-  if (!printerName) throw new Error('Nenhuma impressora selecionada.');
-  const text = String(content ?? '').slice(0, 30000);
-  if (!text.trim()) throw new Error('O cupom está vazio. Verifique os dados do pedido.');
-  const lineCount = text.split(/\r?\n/).length;
-  const paperHeight = Math.min(500000, Math.max(100000, (lineCount + 7) * 4000));
-  const win = new BrowserWindow({
-    show: false, width: 340, height: 600,
-    webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true }
-  });
-  try {
-    // A bundled file is available offline and avoids Chromium navigation
-    // failures caused by loading percent-encoded HTML via a data: URL.
-    try {
-      await win.loadFile(RECEIPT_TEMPLATE);
-      await win.webContents.executeJavaScript(receiptTextScript(text));
-      await win.webContents.executeJavaScript(
-        'document.fonts.ready.then(() => true)'
-      );
-    } catch (cause) {
-      console.error('[Totem] Falha ao preparar o documento do cupom:', cause);
-      throw new Error(
-        'Não foi possível preparar o cupom. Atualize o aplicativo e tente novamente.'
-      );
-    }
-    await new Promise((resolve, reject) => {
-      win.webContents.print({
-        silent: true,
-        deviceName: printerName,
-        printBackground: true,
-        margins: { marginType: 'none' },
-        pageSize: { width: 80000, height: paperHeight }
-      }, (success, failureReason) => {
-        if (success) resolve();
-        else reject(new Error(failureReason || 'Não foi possível enviar o cupom à impressora.'));
-      });
-    });
-  } finally {
-    if (!win.isDestroyed()) win.destroy();
-  }
+  // Use the installed Windows printer driver (ELGIN i8 included) instead
+  // of a hidden Chromium page. Both test and automatic receipts share
+  // this exact printing path.
+  await printWithWindows(printerName, content);
 }
 async function printTest(printerName) {
   const lines = [
@@ -131,5 +86,5 @@ module.exports = {
   printReceipt,
   printTest,
   PrintWorker,
-  receiptTextScript
+  printWithWindows
 };
