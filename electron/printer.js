@@ -1,34 +1,46 @@
 'use strict';
 const { BrowserWindow } = require('electron');
+const path = require('node:path');
 const storage = require('./storage');
 const api = require('./api');
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
-  })[c]);
+const RECEIPT_TEMPLATE = path.join(__dirname, 'receipt.html');
+
+// Set plain text into a local, static document. Do not navigate to data:
+// URLs: those fail with ERR_FAILED (-2) on some Windows/Electron setups.
+function receiptTextScript(content) {
+  const text = String(content ?? '').slice(0, 30000);
+  return 'document.getElementById("receipt").textContent = ' +
+    JSON.stringify(text) + ';';
 }
 async function installedPrinters(contents) {
   return contents.getPrintersAsync();
 }
 async function printReceipt(printerName, content) {
   if (!printerName) throw new Error('Nenhuma impressora selecionada.');
-  // The host never executes code received from a remote receipt.
-  const receipt = escapeHtml(String(content || '').slice(0, 30000));
-  const lineCount = String(content || '').split(/\r?\n/).length;
+  const text = String(content ?? '').slice(0, 30000);
+  if (!text.trim()) throw new Error('O cupom está vazio. Verifique os dados do pedido.');
+  const lineCount = text.split(/\r?\n/).length;
   const paperHeight = Math.min(500000, Math.max(100000, (lineCount + 7) * 4000));
   const win = new BrowserWindow({
     show: false, width: 340, height: 600,
     webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true }
   });
   try {
-    const document = `<!doctype html><html><head><meta charset="utf-8">
-      <style>@page{size:80mm auto;margin:0}
-      html,body{margin:0;padding:0;background:white;color:black}
-      pre{margin:0;padding:2mm 2mm 8mm;white-space:pre-wrap;overflow-wrap:anywhere;
-      font:10px/1.45 "Consolas","Courier New",monospace}</style>
-      </head><body><pre>${receipt}</pre></body></html>`;
-    await win.loadURL('data:text/html;charset=UTF-8,' + encodeURIComponent(document));
+    // A bundled file is available offline and avoids Chromium navigation
+    // failures caused by loading percent-encoded HTML via a data: URL.
+    try {
+      await win.loadFile(RECEIPT_TEMPLATE);
+      await win.webContents.executeJavaScript(receiptTextScript(text));
+      await win.webContents.executeJavaScript(
+        'document.fonts.ready.then(() => true)'
+      );
+    } catch (cause) {
+      console.error('[Totem] Falha ao preparar o documento do cupom:', cause);
+      throw new Error(
+        'Não foi possível preparar o cupom. Atualize o aplicativo e tente novamente.'
+      );
+    }
     await new Promise((resolve, reject) => {
       win.webContents.print({
         silent: true,
@@ -114,4 +126,10 @@ class PrintWorker {
     }
   }
 }
-module.exports = { installedPrinters, printReceipt, printTest, PrintWorker };
+module.exports = {
+  installedPrinters,
+  printReceipt,
+  printTest,
+  PrintWorker,
+  receiptTextScript
+};
