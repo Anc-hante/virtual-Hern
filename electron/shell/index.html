@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hernandes Checkout</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header id="toolbar">
+    <button id="back" class="back" type="button" aria-label="Voltar para a página anterior">← Voltar</button>
+    <div class="brand">HERNANDES <span>CHECKOUT</span></div>
+    <p id="status">Preparando e-commerce…</p>
+    <div class="tools">
+      <button id="refresh" class="utility" type="button" title="Atualizar somente quando solicitado">↻ Atualizar</button>
+      <button id="settings" class="gear" type="button" title="Configurar impressora" aria-label="Configurar impressora">⚙</button>
+      <button id="restart" class="utility accent" type="button">⟲ Reiniciar e-commerce</button>
+    </div>
+  </header>
+
+  <main id="surface" aria-live="polite">
+    <section class="pane" data-pane="loading">
+      <article class="dialog narrow">
+        <div class="symbol">H</div>
+        <h1>Preparando o checkout</h1>
+        <p>Aguarde enquanto abrimos o e-commerce.</p>
+      </article>
+    </section>
+
+    <section class="pane" data-pane="error" hidden>
+      <article class="dialog narrow">
+        <div class="symbol warn">!</div>
+        <h1>Não foi possível abrir</h1>
+        <p>Verifique a conexão com a internet e tente novamente.</p>
+        <button id="retry" class="button primary" type="button">Tentar novamente</button>
+      </article>
+    </section>
+
+    <section class="pane" data-pane="complete" hidden>
+      <div id="confetti" aria-hidden="true"></div>
+      <article class="dialog complete">
+        <div class="check">✓</div>
+        <small>PEDIDO CONCLUÍDO</small>
+        <h1>Obrigado pela sua compra!</h1>
+        <p>Seu pedido foi finalizado com sucesso.</p>
+        <div class="notice">
+          <strong>🧾 Aguarde seu cupom</strong>
+          <p>Por favor, aguarde a impressora terminar de imprimir o cupom antes de retirá-lo.</p>
+        </div>
+        <button id="new-session" class="button primary" type="button">Iniciar novo atendimento →</button>
+      </article>
+    </section>
+
+    <section class="pane" data-pane="login" hidden>
+      <article class="dialog login">
+        <div class="symbol">⚙</div>
+        <h1>Área administrativa</h1>
+        <p>Entre para configurar a impressora deste totem.</p>
+        <form id="login-form" autocomplete="off">
+          <label>Usuário <input id="admin-user" type="text" required autocapitalize="off" autocomplete="off"></label>
+          <label>Senha <input id="admin-pass" type="password" required autocomplete="off"></label>
+          <p id="login-error" class="error" role="alert"></p>
+          <div class="actions">
+            <button id="login-close" type="button" class="button secondary">Cancelar</button>
+            <button type="submit" class="button primary">Entrar</button>
+          </div>
+        </form>
+      </article>
+    </section>
+
+    <section class="pane" data-pane="printers" hidden>
+      <article class="dialog printers">
+        <div class="dialog-title">
+          <div>
+            <small>CONFIGURAÇÃO DO TOTEM</small>
+            <h1>Escolha a impressora</h1>
+            <p>Selecione uma impressora instalada no Windows. Depois teste e salve.</p>
+          </div>
+          <button id="printer-close" class="close" type="button" aria-label="Fechar">×</button>
+        </div>
+        <div class="selected">
+          <span>Impressora salva</span>
+          <strong id="saved-printer">Nenhuma impressora selecionada</strong>
+          <button id="printer-refresh" class="outline" type="button">↻ Atualizar lista</button>
+        </div>
+        <div id="printer-list" class="printer-list" role="radiogroup" aria-label="Impressoras instaladas"></div>
+        <p id="printer-message" class="hint" role="status"></p>
+        <div class="actions">
+          <button id="printer-test" class="button secondary" type="button" disabled>🧾 Testar impressão</button>
+          <button id="printer-save" class="button primary" type="button" disabled>Salvar impressora</button>
+        </div>
+      </article>
+    </section>
+  </main>
+  <script src="../../src/HernandesCheckout/Resources/keyboard_ui.js"></script>
+  <script src="./renderer.js"></script>
+</body>
+</html>
