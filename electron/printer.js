@@ -1,33 +1,42 @@
 'use strict';
+const qrcode = require('qrcode');
 const { printWithWindows } = require('./windows-printer');
+const { REGISTER_URL, sampleReceipt, checkRealOrder } = require('./receipt-format');
 const storage = require('./storage');
 const api = require('./api');
+
+let qrPromise = null;
+function getQrPng() {
+  if (!qrPromise) {
+    qrPromise = qrcode.toBuffer(REGISTER_URL, {
+      errorCorrectionLevel: 'M',
+      margin: 4,
+      width: 440,
+      color: { dark: '#000000', light: '#FFFFFFFF' }
+    }).then(buffer => buffer.toString('base64'));
+    qrPromise.catch(() => { qrPromise = null; });
+  }
+  return qrPromise;
+}
+async function receiptPreview() {
+  const image = await getQrPng();
+  return {
+    text: sampleReceipt(),
+    qrUrl: REGISTER_URL,
+    qrDataUrl: 'data:image/png;base64,' + image,
+    example: true
+  };
+}
 
 async function installedPrinters(contents) {
   return contents.getPrintersAsync();
 }
 async function printReceipt(printerName, content) {
-  // Use the installed Windows printer driver (ELGIN i8 included) instead
-  // of a hidden Chromium page. Both test and automatic receipts share
-  // this exact printing path.
-  await printWithWindows(printerName, content);
+  const qrPngBase64 = await getQrPng();
+  await printWithWindows(printerName, content, { qrPngBase64 });
 }
 async function printTest(printerName) {
-  const lines = [
-    'HERNANDES ATACADO E DISTRIBUICAO',
-    'TESTE DE IMPRESSAO - TOTEM',
-    '------------------------------------------',
-    'Impressora: ' + printerName,
-    'Data: ' + new Date().toLocaleString('pt-BR'),
-    '',
-    'Se este cupom saiu corretamente,',
-    'a impressora foi selecionada.',
-    '',
-    '------------------------------------------',
-    '',
-    '', ''
-  ];
-  await printReceipt(printerName, lines.join('\n'));
+  await printReceipt(printerName, sampleReceipt());
 }
 
 class PrintWorker {
@@ -42,7 +51,6 @@ class PrintWorker {
   start() {
     if (this.timer) return;
     this.timer = setInterval(() => void this.tick(), 6000);
-    // First poll is delayed to allow storefront to initialize.
   }
   stop() {
     clearInterval(this.timer);
@@ -67,24 +75,22 @@ class PrintWorker {
       const job = await api.claim();
       if (!job) return;
 
-      // Do not acknowledge as printed if the driver rejects the job.
       try {
+        checkRealOrder(job);
         await printReceipt(chosen, job.receipt_text);
         await api.complete(job.job_id, true);
       } catch (e) {
+        console.error('[Totem] Falha na impressao do pedido:', e.message);
         try { await api.complete(job.job_id, false, e.message); } catch (_) {}
       }
     } catch (e) {
-      console.warn('[Totem] Fila de impressão indisponível:', e.message);
+      console.warn('[Totem] Fila de impressao indisponivel:', e.message);
     } finally {
       this.busy = false;
     }
   }
 }
 module.exports = {
-  installedPrinters,
-  printReceipt,
-  printTest,
-  PrintWorker,
-  printWithWindows
+  installedPrinters, printReceipt, printTest, receiptPreview,
+  PrintWorker, printWithWindows, getQrPng
 };
