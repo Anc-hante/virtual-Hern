@@ -85,6 +85,7 @@ function display(state) {
   const next = state.screen || 'loading';
   const previous = current;
   current = next;
+  if (next !== 'login') window.__hernandesHideKeyboard?.();
   document.querySelectorAll('[data-pane]').forEach(pane => {
     pane.hidden = pane.dataset.pane !== next;
   });
