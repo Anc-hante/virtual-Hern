@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build Electron Windows EXE
 
 on:
   push:
@@ -11,66 +11,52 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate embedded scripts
-        shell: pwsh
-        run: |
-          node --check "src/HernandesCheckout/Resources/keyboard_bridge.js"
-          node --check "src/HernandesCheckout/Resources/kiosk_session.js"
-          node --check "src/HernandesCheckout/Resources/checkout_flow.js"
-
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+      - name: Setup Node.js LTS
+        uses: actions/setup-node@v4
         with:
-          dotnet-version: "10.0.x"
+          node-version: '22'
+          cache: npm
 
-      - name: Restore
+      - name: Install dependencies
+        shell: pwsh
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify JavaScript and migration tests
         shell: pwsh
         run: |
-          dotnet restore "src/HernandesCheckout/HernandesCheckout.csproj"
-
-      - name: Build
-        shell: pwsh
-        run: |
-          dotnet build "src/HernandesCheckout/HernandesCheckout.csproj" -c Release --no-restore
-
-      - name: Publish single EXE
-        shell: pwsh
-        run: |
-          if (Test-Path "dist") {
-            Remove-Item "dist" -Recurse -Force
+          npm run check
+          Get-ChildItem electron -Filter *.js -Recurse | ForEach-Object {
+            node --check $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Invalid JS: $($_.FullName)" }
+          }
+          Get-ChildItem src/HernandesCheckout/Resources -Filter *.js | ForEach-Object {
+            node --check $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Invalid JS: $($_.FullName)" }
           }
 
-          dotnet publish "src/HernandesCheckout/HernandesCheckout.csproj" `
-            -c Release `
-            -r win-x64 `
-            --self-contained true `
-            -o dist `
-            /p:PublishSingleFile=true `
-            /p:IncludeNativeLibrariesForSelfExtract=true `
-            /p:EnableCompressionInSingleFile=true
+      - name: Build portable Windows EXE
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run build
 
-      - name: Verify artifact
+      - name: Verify executable
         shell: pwsh
         run: |
           if (-not (Test-Path "dist/HernandesCheckout.exe")) {
-            throw "HernandesCheckout.exe was not generated"
+            throw "HernandesCheckout.exe not generated"
           }
-
-          $files = Get-ChildItem "dist" -File
-          $files | Format-Table Name,Length
-
-          if ($files.Count -ne 1) {
-            Write-Warning "Publish produced more than one file. The EXE remains the supported launcher."
-          }
+          Get-Item "dist/HernandesCheckout.exe" | Format-List Name,Length
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: HernandesCheckout-WebView2-Windows
+          name: HernandesCheckout-Electron-Windows
           path: dist/HernandesCheckout.exe
           if-no-files-found: error
