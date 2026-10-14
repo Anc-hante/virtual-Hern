@@ -1,7 +1,7 @@
-# Windows PowerShell 5.1 native GDI printing for an installed Windows printer.
-# JSON payload is received on stdin; no receipt data is interpolated in code.
+# Windows PowerShell 5.1 native printing, using the installed ELGIN i8 driver.
+# Receipt and printer name are JSON from stdin, never inserted into a command.
 $ErrorActionPreference = 'Stop'
-[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
 Add-Type -AssemblyName System.Drawing
 
 try {
@@ -15,13 +15,13 @@ try {
         throw 'Impressora ou cupom vazio.'
     }
 
-    $document = New-Object System.Drawing.Printing.PrintDocument
+    $document = [System.Drawing.Printing.PrintDocument]::new()
     $font = $null
 
     try {
         $document.DocumentName = 'Hernandes Checkout - Cupom'
         $document.PrintController =
-            New-Object System.Drawing.Printing.StandardPrintController
+            [System.Drawing.Printing.StandardPrintController]::new()
         $document.PrinterSettings.PrinterName = $name
 
         if (-not $document.PrinterSettings.IsValid) {
@@ -33,11 +33,8 @@ try {
             [System.Drawing.Printing.Margins]::new(0, 0, 0, 0)
         $document.OriginAtMargins = $false
 
-        # GDI PaperSize dimensions are in hundredths of an inch.
-        # ELGIN i8 thermal rolls are normally 80mm. Do not use an A4
-        # printer page, as that feeds excessive blank receipt paper.
-        $lines = @($text -split '?
-').Count
+        # PaperSize uses hundredths of an inch: 315 = 80mm roll.
+        $lines = @($text -split '\r?\n').Count
         $height = [int][Math]::Min(3200, [Math]::Max(360, ($lines + 5) * 19))
         $paper = [System.Drawing.Printing.PaperSize]::new(
             'Hernandes - Bobina 80mm', 315, $height)
@@ -78,7 +75,7 @@ try {
         $document.Print()
         [Console]::Out.WriteLine('PRINT_SUBMITTED')
     } finally {
-        if ($font -ne $null) { $font.Dispose() }
+        if ($null -ne $font) { $font.Dispose() }
         $document.Dispose()
     }
 } catch {
