@@ -30,7 +30,7 @@ try {
 
         $document.DefaultPageSettings.Landscape = $false
         $document.DefaultPageSettings.Margins =
-            New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+            [System.Drawing.Printing.Margins]::new(0, 0, 0, 0)
         $document.OriginAtMargins = $false
 
         # GDI PaperSize dimensions are in hundredths of an inch.
@@ -39,12 +39,12 @@ try {
         $lines = @($text -split '?
 ').Count
         $height = [int][Math]::Min(3200, [Math]::Max(360, ($lines + 5) * 19))
-        $paper = New-Object System.Drawing.Printing.PaperSize(
+        $paper = [System.Drawing.Printing.PaperSize]::new(
             'Hernandes - Bobina 80mm', 315, $height)
         $document.DefaultPageSettings.PaperSize = $paper
 
-        $font = New-Object System.Drawing.Font(
-            'Consolas', 8.5,
+        $font = [System.Drawing.Font]::new(
+            'Consolas', [single]8,
             [System.Drawing.FontStyle]::Regular,
             [System.Drawing.GraphicsUnit]::Point)
 
@@ -56,11 +56,11 @@ try {
             param($sender, $eventArgs)
 
             $eventArgs.Graphics.PageUnit =
-                [System.Drawing.GraphicsUnit]::Display
-            $bounds = New-Object System.Drawing.RectangleF(
-                [single]8, [single]8,
-                [single]294, [single]($script:receiptHeight - 16))
-            $format = New-Object System.Drawing.StringFormat
+                [System.Drawing.GraphicsUnit]::Inch
+            $bounds = [System.Drawing.RectangleF]::new(
+                [single]0.08, [single]0.08,
+                [single]2.98, [single](($script:receiptHeight / 100) - 0.16))
+            $format = [System.Drawing.StringFormat]::new()
             try {
                 $eventArgs.Graphics.DrawString(
                     $script:receiptText,
