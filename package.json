@@ -1,0 +1,39 @@
+{
+  "name": "hernandes-checkout",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Totem de ecommerce Hernandes - Electron",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --test electron/tests/*.test.js",
+    "build": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "br.com.grupohernandes.checkout",
+    "productName": "Hernandes Checkout",
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "src/HernandesCheckout/Resources/*.js",
+      "package.json",
+      "!electron/tests/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "HernandesCheckout.${ext}"
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
+    }
+  }
+}
