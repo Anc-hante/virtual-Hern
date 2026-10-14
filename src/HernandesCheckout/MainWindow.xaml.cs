@@ -18,9 +18,6 @@ public partial class MainWindow : Window
 {
     private const string HomeUrl = "https://www.grupohernandes.com.br/";
     private const double KeyboardHeight = 458;
-    private static readonly TimeSpan InactivityTimeout =
-        TimeSpan.FromMinutes(2);
-
     private bool _allowClose;
     private bool _keyboardVisible;
     private bool _webReady;
@@ -30,7 +27,6 @@ public partial class MainWindow : Window
     private bool _startNewSessionOnNextHome;
     private string _totemSessionId = Guid.NewGuid().ToString("N");
     private readonly SemaphoreSlim _scriptLock = new(1, 1);
-    private readonly DispatcherTimer _inactivityTimer;
     private readonly TotemApiClient _totemApi = new();
     private readonly PrinterWorker _printerWorker;
 
@@ -39,13 +35,6 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _printerWorker = new PrinterWorker(_totemApi);
-
-        _inactivityTimer = new DispatcherTimer
-        {
-            Interval = InactivityTimeout,
-        };
-
-        _inactivityTimer.Tick += InactivityTimer_Tick;
 
         Loaded += MainWindow_Loaded;
         Closed += MainWindow_Closed;
@@ -153,8 +142,7 @@ public partial class MainWindow : Window
 
                     HideStatus();
                     UpdateBackButton();
-                    ResetInactivityTimer();
-                    _ = OnNavigationReadyAsync();
+                                _ = OnNavigationReadyAsync();
                     return;
                 }
 
@@ -283,8 +271,7 @@ public partial class MainWindow : Window
             if (type == "lead")
             {
                 SaveLead(root);
-                ResetInactivityTimer();
-                return;
+                        return;
             }
 
             if (type == "totem_event")
@@ -308,7 +295,6 @@ public partial class MainWindow : Window
                 ? actionElement.GetString()
                 : null;
 
-        ResetInactivityTimer();
 
         if (action == "show")
         {
@@ -342,8 +328,7 @@ public partial class MainWindow : Window
 
         if (action == "activity")
         {
-            ResetInactivityTimer();
-            return;
+                return;
         }
 
         if (action == "completion-lock")
@@ -378,8 +363,7 @@ public partial class MainWindow : Window
             Dispatcher.Invoke(() =>
             {
                 RestartButton.IsEnabled = true;
-                ResetInactivityTimer();
-            });
+                    });
         }
     }
 
@@ -391,7 +375,6 @@ public partial class MainWindow : Window
         }
 
         _completionLocked = true;
-        _inactivityTimer.Stop();
 
         HideKeyboard(
             animate: false,
@@ -554,7 +537,6 @@ public partial class MainWindow : Window
                 new Uri(HomeUrl);
         }
 
-        ResetInactivityTimer();
     }
 
     private async Task HandleTotemEventAsync(
@@ -701,21 +683,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ResetInactivityTimer()
-    {
-        _inactivityTimer.Stop();
-        _inactivityTimer.Start();
-    }
-
-    private async void InactivityTimer_Tick(
-        object? sender,
-        EventArgs e)
-    {
-        _inactivityTimer.Stop();
-
-        await ResetCheckoutAsync("inactivity");
-    }
-
     private async Task ResetCheckoutAsync(string reason)
     {
         _completionLocked = false;
@@ -770,8 +737,7 @@ public partial class MainWindow : Window
             Browser.CoreWebView2.Navigate(HomeUrl);
             SettingsButton.IsEnabled = true;
             RestartButton.IsEnabled = true;
-            ResetInactivityTimer();
-        }
+            }
     }
 
     private void ShowKeyboard(string kind)
@@ -913,7 +879,6 @@ public partial class MainWindow : Window
         object? sender,
         VirtualKeyEventArgs e)
     {
-        ResetInactivityTimer();
 
         var action =
             JsonSerializer.Serialize(e.Action);
@@ -929,7 +894,6 @@ public partial class MainWindow : Window
         object? sender,
         EventArgs e)
     {
-        ResetInactivityTimer();
 
         HideKeyboard(
             animate: true,
@@ -981,7 +945,6 @@ public partial class MainWindow : Window
     private void ShowNavigationError(string text)
     {
         _webReady = false;
-        _inactivityTimer.Stop();
 
         HideKeyboard(
             animate: false,
@@ -1010,7 +973,6 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        ResetInactivityTimer();
 
         if (_completionLocked ||
             Browser.CoreWebView2 is null ||
@@ -1047,8 +1009,6 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        ResetInactivityTimer();
-        _inactivityTimer.Stop();
 
         HideKeyboard(
             animate: false,
@@ -1091,15 +1051,13 @@ public partial class MainWindow : Window
         }
         finally
         {
-            ResetInactivityTimer();
-        }
+            }
     }
 
     private async void RestartButton_Click(
         object sender,
         RoutedEventArgs e)
     {
-        ResetInactivityTimer();
         await ResetCheckoutAsync("manual");
     }
 
@@ -1107,7 +1065,6 @@ public partial class MainWindow : Window
         object sender,
         KeyEventArgs e)
     {
-        ResetInactivityTimer();
 
         var modifiers =
             System.Windows.Input.Keyboard.Modifiers;
