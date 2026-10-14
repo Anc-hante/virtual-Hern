@@ -24,6 +24,7 @@ let sessionId = crypto.randomUUID();
 let attempts = 0;
 let lockUntil = 0;
 let firstLoadComplete = false;
+let allowQuit = false;
 
 const scripts = [
   'keyboard_bridge.js',
@@ -123,6 +124,9 @@ function createWindow() {
     }
   });
   window.setMenuBarVisibility(false);
+  window.on('close', event => {
+    if (!allowQuit) event.preventDefault();
+  });
   window.webContents.on('before-input-event', (e, key) => {
     if (key.control && key.shift && key.key.toUpperCase() === 'F12') {
       e.preventDefault();
@@ -152,7 +156,9 @@ function createWindow() {
   layoutSite();
 
   site.webContents.on('dom-ready', () => {
-    if (!completionLocked) void installSiteScripts();
+    if (!completionLocked && isShopFrame(site.webContents.mainFrame)) {
+      void installSiteScripts();
+    }
   });
   site.webContents.on('did-finish-load', () => {
     if (completionLocked) return;
@@ -321,5 +327,6 @@ if (!app.requestSingleInstanceLock()) {
     if (window) { window.show(); window.focus(); }
   });
   app.whenReady().then(createWindow);
+  app.on('before-quit', () => { allowQuit = true; });
   app.on('window-all-closed', () => app.quit());
 }
