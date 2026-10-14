@@ -6,7 +6,11 @@
 
   const post = (payload) => {
     try {
-      window.chrome?.webview?.postMessage(payload);
+      if (window.__hernandesHost?.postMessage) {
+        window.__hernandesHost.postMessage(payload);
+      } else {
+        window.chrome?.webview?.postMessage(payload);
+      }
     } catch (_) {}
   };
 
