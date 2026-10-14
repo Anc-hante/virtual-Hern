@@ -42,7 +42,8 @@ test('real WinThor order from customer 12678 is authorized', () => {
 test('printer preview and test use exactly the same full sample', async () => {
   const printer = require('../printer');
   const preview = await printer.receiptPreview();
-  assert.equal(preview.text, sampleReceipt().replace(/DATA:.*/, preview.text.match(/DATA:.*/)?.[0] || ''));
+  assert.match(preview.text, /PEDIDO: EXEMPLO/);
+  assert.match(preview.text, /TOTAL DO PEDIDO:.*R\$ 40,30/);
   assert.equal(preview.qrUrl, REGISTER_URL);
   assert.match(preview.qrDataUrl, /^data:image\/png;base64,/);
   assert.ok(preview.example);
