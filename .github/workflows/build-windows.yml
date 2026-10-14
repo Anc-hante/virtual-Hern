@@ -53,6 +53,8 @@ jobs:
             throw "Invalid native printer PowerShell script"
           }
           Write-Host "Native receipt printing script syntax OK"
+          node electron/tests/windows-printer-smoke.js
+          if ($LASTEXITCODE -ne 0) { throw "Native Windows printer smoke test failed" }
 
       - name: Build portable Windows EXE
         shell: pwsh
