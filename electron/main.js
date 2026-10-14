@@ -27,7 +27,9 @@ let firstLoadComplete = false;
 let allowQuit = false;
 
 const scripts = [
-  'keyboard_bridge.js',
+  // Electron uses a single touch-keyboard controller. The legacy
+  // keyboard_bridge.js was only needed by WPF and duplicated input events.
+  'keyboard_logic.js',
   'kiosk_session.js',
   'checkout_flow.js',
   'keyboard_ui.js'
