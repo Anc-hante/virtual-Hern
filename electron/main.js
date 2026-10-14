@@ -136,8 +136,7 @@ function createWindow() {
       partition: 'persist:hernandes-totem',
       contextIsolation: true,
       sandbox: true,
-      nodeIntegration: false,
-      backgroundThrottling: false
+      nodeIntegration: false
     }
   });
   site.setBackgroundColor('#ffffff');
