@@ -1,196 +1,126 @@
-# Virtual Hern
+# Hernandes Checkout — Electron
 
-Checkout touch da Hernandes para Windows, otimizado para monitor vertical.
+Totem de autoatendimento Windows (tela sensível ao toque) usando **Electron/Chromium**,
+sem hospedar o navegador dentro do WPF/WebView2.
 
-## Tecnologia atual
+## O que faz
 
-A versão principal usa:
+- Abre `https://www.grupohernandes.com.br/` em tela cheia.
+- Botões fixos **Voltar**, **Atualizar (manual)**, **Configuração ⚙** e **Reiniciar e-commerce**.
+- Teclado virtual integrado ao Chromium, com texto, números, símbolos, Shift e Enter.
+- Antes de adicionar o primeiro produto, solicita a identificação do cliente e, quando
+  necessário, nome e telefone; registra os dados no HernandesDash e guarda CSV de segurança.
+- Tela de compra concluída com agradecimento, confetes e aviso para aguardar a impressão.
+- Recupera sessões e transmite eventos ao HernandesDash; falhas de envio ficam em fila local.
+- Consulta a fila de cupons do HernandesDash e imprime na impressora configurada.
+- Permite impressão de teste e seleção de impressora após autenticação administrativa.
+- **Não faz reset por inatividade** e **não atualiza a página por timer**.
 
-- C# / .NET 10
-- WPF
-- Microsoft Edge WebView2
-- teclado virtual próprio
-- sessão persistente do e-commerce
+## Compilação no Windows
 
-A versão antiga em Python/Qt foi preservada na branch `legacy-python`.
-
-## Por que WebView2
-
-O protótipo em QtWebEngine precisava rodar por software no AIO para evitar tela preta, o que deixava navegação e animações menos fluidas.
-
-A versão atual usa o motor do Microsoft Edge integrado ao Windows, mantendo aceleração gráfica nativa.
-
-## Recursos
-
-- e-commerce Hernandes em tela cheia;
-- tela vertical / portrait;
-- teclado virtual automático;
-- linha numérica completa;
-- layouts de texto, e-mail e numérico;
-- teclado abre somente em campos digitáveis;
-- login, cookies e armazenamento do site persistentes;
-- perfil WebView2 salvo em `%LOCALAPPDATA%\GrupoHernandes\VirtualHern\WebView2`;
-- fluxo pós-compra na página `/confirmacao`;
-- após o OK do pedido concluído aparece **Voltar ao início**;
-- `F5` recarrega;
-- `Ctrl + Shift + F12` fecha o kiosk.
-
-## Estrutura
-
-```text
-virtual-Hern/
-├── src/
-│   └── HernandesCheckout/
-│       ├── HernandesCheckout.csproj
-│       ├── App.xaml
-│       ├── App.xaml.cs
-│       ├── MainWindow.xaml
-│       ├── MainWindow.xaml.cs
-│       ├── VirtualKeyboard.xaml
-│       ├── VirtualKeyboard.xaml.cs
-│       └── Resources/
-│           ├── keyboard_bridge.js
-│           └── checkout_flow.js
-├── build_windows.bat
-└── .github/workflows/build-windows.yml
-```
-
-## Gerar o EXE
-
-No Windows, execute:
+Instale o [Node.js LTS](https://nodejs.org/) e, dentro da pasta do repositório, rode:
 
 ```bat
+git pull origin main
 build_windows.bat
 ```
 
-Se o .NET SDK não estiver disponível, o script baixa uma cópia local automaticamente.
+Alternativamente:
 
-Ao terminar:
+```bat
+npm install
+npm run check
+npm run build
+```
 
-```text
+O executável portátil fica em `dist\HernandesCheckout.exe`. Ele inclui o
+Chromium do Electron e **não depende de Node.js nem do .NET instalado no computador**
+para rodar. O `GitHub Actions` também disponibiliza o mesmo EXE como artefato
+`HernandesCheckout-Electron-Windows`.
+
+```bat
 dist\HernandesCheckout.exe
 ```
 
-O publish é self-contained e gera o launcher em arquivo único.
+A antiga implementação WPF permanece em `src/HernandesCheckout/*.xaml*`
+para referência/rollback, mas **não é mais compilada pelo build_windows.bat**.
 
-## GitHub Actions
+## Regras de atendimento
 
-Cada push na branch `main` gera e valida uma versão Windows. O artefato é publicado como:
+A página é carregada na abertura. Navegações provocadas por cliques no e-commerce
+continuam normais. O aplicativo **não faz recargas automáticas**. O botão
+**Atualizar** recarrega somente quando alguém tocar nele.
 
-`HernandesCheckout-WebView2-Windows`
+**Reiniciar e-commerce** encerra o atendimento manualmente e tenta limpar o carrinho.
+Após uma compra, a tela final permanece até tocar **Iniciar novo atendimento**.
+O carrinho permanece sujeito à disponibilidade/funcionamento do próprio site e
+não há garantia de limpeza se o e-commerce não disponibilizar a operação.
 
-## Primeiro login
+**Não existe reset de 2 minutos.**
 
-A primeira execução da versão WebView2 usa um novo perfil de navegador. Faça login uma vez. Nas próximas execuções, a sessão fica salva no perfil persistente.
+## Impressão
 
+No topo, toque em **⚙**. Um administrador informa as credenciais configuradas no
+totem e abre a lista de impressoras instaladas no Windows. Depois pode
+**Testar impressão** e **Salvar impressora**.
 
-## Ciclo de atendimento
+A escolha anterior do aplicativo WPF é reutilizada:
 
-No primeiro clique em **Adicionar** de cada atendimento:
+```text
+%LOCALAPPDATA%\GrupoHernandes\VirtualHern\printer-settings.json
+```
 
-1. O checkout pergunta se o cliente já possui cadastro.
-2. **Sim**: a compra continua normalmente.
-3. **Não**: solicita nome e telefone antes de liberar a primeira inclusão.
-4. Depois da identificação, a pergunta não aparece novamente enquanto o atendimento estiver ativo.
+Também é reutilizado o ID já existente em
+`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\totem-device-id.txt`, para
+evitar criar um totem duplicado no HernandesDash.
 
-O ciclo é reiniciado quando:
+O agente consulta a API aproximadamente a cada 6 segundos, sem recarregar o
+site. Se não houver uma impressora salva/instalada, não retira itens da fila.
 
-- o pedido é concluído;
-- passam 2 minutos sem interação;
-- o operador toca em **Reiniciar e-commerce** no topo.
+**Observação:** sucesso na API nativa de impressão significa que o Windows
+**aceitou o trabalho na fila**; não existe confirmação do sensor físico de que
+o papel terminou de sair. A tela do cliente orienta aguardar o cupom.
 
-Leads informados no fluxo **Não** são registrados em:
+## API
 
-`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\leads.csv`
+Base padrão:
 
+```text
+https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem
+```
 
-## Integração HernandesDash
+Opcionalmente, configure:
 
-O checkout envia automaticamente eventos do totem para:
+```bat
+setx HERNANDES_TOTEM_API_BASE_URL "https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem"
+setx HERNANDES_TOTEM_API_TOKEN "TOKEN_CONFIGURADO_NO_BACKEND"
+```
 
-`https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem/events`
+O servidor deve configurar `ECOMMERCE_TOTEM_API_TOKEN` com o mesmo token.
+O token **não deve** ser armazenado no código-fonte.
 
-Eventos enviados:
+O backend, e não o popup do navegador, deve reconhecer pedidos WinThor com
+`PCPEDC.CODCLI = 12678`. A conciliação e a fila de impressão continuam no
+HernandesDash; Electron atua como cliente HTTP e agente local de impressão.
 
-- atendimento iniciado;
-- cliente com cadastro;
-- novo contato (nome e telefone);
-- produto adicionado;
-- pedido concluído, com número/valor/itens quando disponíveis;
-- reinício manual;
-- reinício por inatividade.
+## Segurança e perfil
 
-Cada equipamento recebe um ID persistente salvo em:
+A UI do site usa `contextIsolation`, `sandbox` e `nodeIntegration:false`.
+A página só tem uma ponte de **envio de eventos** (sem acesso às credenciais de
+administração, ao filesystem, ou à seleção da impressora). Todas as ações
+administrativas são processadas no host, não no site.
 
-`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\totem-device-id.txt`
+A senha administrativa foi armazenada como SHA-256 no código; por ser um programa
+local, isso impede exposição em texto puro, **mas não substitui autenticação
+centralizada ou controles de acesso do Windows**.
 
-Se a API ou internet ficar indisponível, os eventos ficam na fila:
+O Electron usa perfil de navegação separado do Edge WebView2. É possível que
+o operador precise fazer login no e-commerce novamente após a migração.
 
-`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\totem-events-pending.jsonl`
+## Diagnóstico
 
-e são reenviados automaticamente quando a conexão voltar.
+O projeto preserva arquivos de contingência locais em
+`%LOCALAPPDATA%\GrupoHernandes\VirtualHern`.
 
-A URL base pode ser sobrescrita com a variável de ambiente:
-
-`HERNANDES_TOTEM_API_BASE_URL`
-
-O valor padrão é:
-
-`https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem`
-
-A variável antiga `HERNANDES_TOTEM_API_URL` continua compatível.
-
-Se o backend estiver configurado com `ECOMMERCE_TOTEM_API_TOKEN`, configure o mesmo valor no Windows em:
-
-`HERNANDES_TOTEM_API_TOKEN`
-
-
-## Impressão automática
-
-O aplicativo também funciona como agente de impressão do próprio totem:
-
-1. consulta a fila de impressão do HernandesDash a cada 2 segundos;
-2. recebe apenas trabalhos destinados ao ID daquele totem;
-3. envia o cupom para a impressora configurada no Windows;
-4. confirma no HernandesDash se foi impresso;
-5. falhas transitórias são tentadas novamente;
-6. se não houver impressora configurada, o trabalho permanece pendente no servidor.
-
-Por padrão é utilizada a impressora padrão do Windows.
-
-Para escolher uma impressora específica, configure:
-
-`HERNANDES_TOTEM_PRINTER_NAME`
-
-Exemplo:
-
-`HERNANDES_TOTEM_PRINTER_NAME=EPSON TM-T20X`
-
-A API pública usada pelo agente é:
-
-`https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem/printer/claim`
-
-e a confirmação da impressão é enviada para:
-
-`/api/ecommerce/totem/printer/jobs/<job_id>/complete`
-
-A tela final da compra é nativa do aplicativo e avisa o cliente para aguardar a impressão do cupom antes de retirá-lo.
-
-
-## Configuração administrativa da impressora
-
-No topo do checkout existe o botão **⚙** ao lado de **Reiniciar e-commerce**.
-
-Ao abrir:
-
-1. o aplicativo solicita acesso administrativo;
-2. depois lista as impressoras instaladas no Windows;
-3. permite selecionar uma impressora;
-4. permite enviar um **teste de impressão**;
-5. salva a impressora escolhida para os próximos cupons.
-
-A configuração fica salva em:
-
-`%LOCALAPPDATA%\GrupoHernandes\VirtualHern\printer-settings.json`
-
-O acesso administrativo usa o usuário definido para o totem e a senha é validada por hash dentro do aplicativo, sem gravar a senha em texto puro no arquivo de configuração.
+Falhas do e-commerce ou da impressora devem ser investigadas por logs e por
+testes reais no equipamento antes de considerar o fluxo de impressão concluído.
