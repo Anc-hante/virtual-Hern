@@ -86,11 +86,26 @@ test('Electron loads keyboard logic instead of both legacy and new controllers',
   assert.doesNotMatch(list, /'keyboard_bridge\.js'/);
 });
 
-test('same-focused-input tap explicitly reopens the touch keyboard', () => {
+test('touch keyboard reopens on focused inputs and handles pointer presses once', () => {
   const ui = fs.readFileSync(
     path.join(__dirname, '..', '..', 'src', 'HernandesCheckout', 'Resources', 'keyboard_ui.js'),
     'utf8'
   );
   assert.match(ui, /document\.addEventListener\('pointerdown'/);
-  assert.match(ui, /if \(logic\.editable\(event\.target\)\)\s*\{\s*show\(event\.target\);/);
+  assert.match(ui, /const field = editableFromEvent\(event\)/);
+  assert.match(ui, /if \(field\)\s*\{\s*show\(field\);/);
+  assert.match(ui, /shadow\.addEventListener\('pointerdown'/);
+  assert.match(ui, /event\.preventDefault\(\)/);
+  assert.match(ui, /event\.detail !== 0/);
+  assert.doesNotMatch(ui, /rows'\)\.addEventListener\('click'/);
+});
+
+test('customer identification modal moves above on-screen keyboard', () => {
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'HernandesCheckout', 'Resources', 'keyboard_ui.js'),
+    'utf8'
+  );
+  assert.match(ui, /gate\.style\.placeItems = 'start center'/);
+  assert.match(ui, /gate\.style\.paddingBottom = '290px'/);
+  assert.match(ui, /gate\.style\.placeItems = gateOriginalStyles\.placeItems/);
 });
