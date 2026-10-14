@@ -35,5 +35,8 @@
     "portable": {
       "requestExecutionLevel": "user"
     }
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }
