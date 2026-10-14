@@ -298,6 +298,16 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       return { ok: true, printers: printers.map(({ name, displayName, isDefault }) =>
         ({ name, displayName, isDefault })), selected: storage.selectedPrinter() };
     }
+    case 'admin:preview': {
+      if (screen !== 'printers') return { ok: false };
+      try {
+        const preview = await printer.receiptPreview();
+        return { ok: true, ...preview };
+      } catch (error) {
+        console.error('[Totem] Falha ao gerar QR Code para previa:', error);
+        return { ok: false, error: 'Nao foi possivel gerar o QR Code do cupom.' };
+      }
+    }
     case 'admin:test':
     case 'admin:save': {
       if (screen !== 'printers') return { ok: false };
