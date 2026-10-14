@@ -15,6 +15,10 @@ function printWithWindows(printerName, receiptText, options = {}) {
 
   if (!name) return Promise.reject(new Error('Selecione uma impressora.'));
   if (!text.trim()) return Promise.reject(new Error('O cupom está vazio.'));
+  const qrPngBase64 = String(options.qrPngBase64 || '');
+  if (qrPngBase64 && !/^[a-zA-Z0-9+/=]+$/.test(qrPngBase64)) {
+    return Promise.reject(new Error('O QR Code do cupom está inválido.'));
+  }
   if ((options.platform || process.platform) !== 'win32') {
     return Promise.reject(new Error('A impressão direta exige Windows.'));
   }
@@ -95,7 +99,7 @@ function printWithWindows(printerName, receiptText, options = {}) {
     child.stdin?.on('error', error => {
       fail(new Error('Falha ao enviar os dados do cupom para o Windows: ' + error.message));
     });
-    child.stdin?.end(JSON.stringify({ printerName: name, text }), 'utf8');
+    child.stdin?.end(JSON.stringify({ printerName: name, text, qrPngBase64 }), 'utf8');
   });
 }
 
