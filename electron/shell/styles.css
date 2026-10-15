@@ -139,3 +139,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .api-setup .api-check-row input{width:23px;height:23px;min-width:23px;margin:1px 0 0;accent-color:#a7191f}
 .api-setup .api-check-row span{flex:1}
 .api-internal-test .button{min-height:48px;height:auto;white-space:normal}
+
+/* Agile integration settings remain private to the kiosk administrator. */
+#admin-agile-panel[hidden],#agile-test-results[hidden]{display:none!important}
+.agile-results{margin-top:12px;text-align:left;background:#f7fafc;border:1px solid #dce3ec;border-radius:12px;padding:14px}
+.agile-results strong{color:#273341;font-size:14px}
+.agile-results p{font-size:13px!important;margin:9px 0!important;color:#415167!important;overflow-wrap:anywhere}
