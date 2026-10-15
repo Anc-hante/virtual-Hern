@@ -215,8 +215,8 @@ $('api-save').onclick = async () => {
   const result = await invoke('admin:api-save', { token });
   $('api-save').disabled = false;
   apiBusy = false;
+  await loadApiStatus();
   apiMessage(result.message || result.error || 'Falha ao salvar token.', !result.ok || !result.connected);
-  void loadApiStatus();
 };
 $('api-test').onclick = async () => {
   if (apiBusy) return;
