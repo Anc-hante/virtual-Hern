@@ -38,7 +38,7 @@ test('Agile ID and secret stored encrypted, never plaintext', () => {
   }
 });
 
-test('Agile test uses JWT and reads orders without exposing other customers', async () => {
+test('Agile JWT test validates orders, ERP orders, product fields without returning other customers', async () => {
   const storage = require('../storage');
   const agile = require('../agile');
   const oldLoad = storage.loadAgileCredentials;
@@ -53,26 +53,35 @@ test('Agile test uses JWT and reads orders without exposing other customers', as
           Token: 'JWT-TEST-ONLY', Expiration: 3600
         }) };
       }
-      return { ok: true, status: 200, json: async () => ({
-        data: [
-          { id_pedido: 'AGILE-1', codcli: '12678', pedido_erp: '', status: 'aberto' },
-          { id_pedido: 'OTHER-SECRET', codcli:'88888', telefone:'00000' }
-        ],
-        meta: { total: 2 }
+      const rows = url.includes('/erp_pedidos_produtos')
+        ? [{ id_pedido:'AGILE-1',id_produto:'4702',quantidade:'2',descricao_produto_snapshot:'Ketchup' }]
+        : url.includes('/erp_pedidos')
+          ? [{ id:'ERP-1',codigo_cliente_erp:'12678',id_pedido_erp:'67890',id_transacao_venda:'TX1' }]
+          : [
+              { id_pedido:'AGILE-1', codcli:'12678', pedido_erp:'', transacao:'TX1',status:'aberto' },
+              { id_pedido:'OTHER-SECRET', codcli:'88888', telefone:'00000' }
+            ];
+      return { ok: true, status:200, json: async () => ({
+        data:rows, meta:{total:rows.length}
       }) };
     };
     agile.resetSession();
-    const result = await agile.testConnection();
-    assert.equal(requests.length, 2);
+    const result = await agile.diagnose();
+    assert.equal(requests.length, 4);
     assert.equal(requests[0].url, 'https://api-integracao.agileecommerce.com.br/api/usuario/login');
     assert.equal(requests[0].redirect, 'error');
     assert.equal(requests[1].method, 'GET');
     assert.equal(requests[1].headers.Authorization, 'Bearer JWT-TEST-ONLY');
-    assert.equal(result.totemOrders.length, 1);
-    assert.equal(result.totemOrders[0].agile_id, 'AGILE-1');
+    assert.equal(result.sources.length, 3);
+    assert.equal(result.sources[0].totem_found, 1);
+    assert.equal(result.orders[0].agile_id, 'AGILE-1');
+    assert.equal(result.orders[0].transaction, 'TX1');
     assert.equal(JSON.stringify(result).includes('OTHER-SECRET'), false);
     assert.equal(JSON.stringify(result).includes('00000'), false);
-    assert.ok(!result.availableFields.includes('telefone'));
+    assert.ok(!result.sources[0].fields.includes('telefone'));
+    assert.deepEqual(await agile.itemsForOrder(result.orders[0]), [
+      { product_id:'4702',product_name:'Ketchup',quantity:'2',price:'',value:'' }
+    ]);
   } finally {
     storage.loadAgileCredentials = oldLoad;
     global.fetch = oldFetch;
@@ -80,12 +89,12 @@ test('Agile test uses JWT and reads orders without exposing other customers', as
   }
 });
 
-test('internal certificate pilot defaults to company API only and can be disabled', () => {
-  const pathSource = fs.readFileSync(path.join(__dirname, '..', 'storage.js'), 'utf8');
-  const apiSource = fs.readFileSync(path.join(__dirname, '..', 'api.js'), 'utf8');
-  assert.match(pathSource, /return true;\s*\n\s*}/); // Corporate HTTPS default
-  assert.match(apiSource, /base === INTERNAL_CERT_BASE/);
-  assert.doesNotMatch(apiSource, /NODE_TLS_REJECT_UNAUTHORIZED\s*=/);
+test('direct Agile transport uses strict TLS and old proxy default is disabled', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'storage.js'), 'utf8');
+  const agileSource = fs.readFileSync(path.join(__dirname, '..', 'agile.js'), 'utf8');
+  assert.match(source, /return false;\s*\n\s*}/);
+  assert.match(agileSource, /redirect: 'error'/);
+  assert.doesNotMatch(agileSource, /rejectUnauthorized:\s*false|NODE_TLS_REJECT_UNAUTHORIZED/);
 });
 
 test('admin provides both Agile credential fields and explicit read-only connection test', () => {
