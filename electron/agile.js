@@ -179,7 +179,10 @@ function matchingItem(row, order) {
   if (erp) return text(row?.id_pedido_erp) === erp;
   // Without an ERP number the internal record ID is not necessarily
   // an Agile order ID; do not associate a product by guessing.
-  return order?.source === 'pedidos' &&
+  // erp_pedidos_produtos.id_pedido references erp_pedidos.id even when
+  // id_pedido_erp/NUMPED is still empty (received, not invoiced yet).
+  // The API relation is explicit; never match by product name or amount.
+  return ['pedidos', 'erp_pedidos'].includes(order?.source) &&
     text(row?.id_pedido) === text(order?.agile_id);
 }
 
@@ -244,7 +247,7 @@ async function itemsForOrder(order) {
   if (!order || (!order.erp_order && !order.agile_id)) return [];
   const field = order.erp_order ? 'id_pedido_erp' : 'id_pedido';
   const id = order.erp_order || order.agile_id;
-  if (!order.erp_order && order.source !== 'pedidos') return [];
+  if (!order.erp_order && !['pedidos', 'erp_pedidos'].includes(order.source)) return [];
   const response = await list('erp_pedidos_produtos', { [field]:id },
     1, MAX_PAGE_SIZE);
   return response.data.filter(row => matchingItem(row, order)).map(safeItem).filter(Boolean);
