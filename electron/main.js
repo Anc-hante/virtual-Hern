@@ -12,7 +12,7 @@ const storage = require('./storage');
 
 const HOME = 'https://www.grupohernandes.com.br/';
 const HEIGHT = 64;
-const ADMIN_HASH = '5a48efcab4528e9926bac957299787cb3b7a7ce95786a11992f9b5aa4a35e987';
+const ADMIN_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
 const allowedEvents = new Set([
   'session_started', 'session_reset', 'customer_existing',
   'customer_new', 'product_added', 'order_completed'
@@ -501,11 +501,8 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       let syncError = '';
       try {
         // Refresh the on-device list directly from Agile. No HernandesDash.
-        const page = await agile.list('erp_pedidos',
-          { codigo_cliente_erp:agile.CUSTOMER_CODE }, 1, 25);
-        for (const record of page.data) {
-          const order = agile.safeTotemOrder(record, 'erp_pedidos');
-          if (!order) continue;
+        const page = await agile.recentOrders();
+        for (const order of page.orders) {
           const previous = agileHistory.get(order.agile_id);
           if (order.cancelled) {
             agileHistory.update(order, { print_status:'cancelled' });
@@ -535,13 +532,9 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       if (worker?.busy) return { ok:false, error:'Impressora ocupada. Aguarde o pedido atual.' };
       if (worker) worker.busy = true;
       try {
-        // Re-check the live ERP record: an order may have been cancelled
+        // Re-check the live Agile order: it may have been cancelled
         // after it was cached in the local historical ledger.
-        const currentPage = await agile.list('erp_pedidos',
-          { codigo_cliente_erp:agile.CUSTOMER_CODE }, 1, 25);
-        const fresh = currentPage.data.map(row =>
-          agile.safeTotemOrder(row, 'erp_pedidos'))
-          .find(order => order?.agile_id === record.agile_id);
+        const fresh = await agile.orderById(record.agile_id);
         if (!fresh) {
           return { ok:false, error:'Pedido nao localizado na consulta atual do Agile. Nao reimprimimos sem validar.' };
         }

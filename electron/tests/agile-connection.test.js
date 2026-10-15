@@ -38,7 +38,7 @@ test('Agile ID and secret stored encrypted, never plaintext', () => {
   }
 });
 
-test('Agile diagnosis uses the working ERP response and skips incompatible pedidos endpoint', async () => {
+test('Agile diagnosis prefers pedidos for customer 12678 and keeps ERP optional', async () => {
   const storage = require('../storage');
   const agile = require('../agile');
   const oldLoad = storage.loadAgileCredentials;
@@ -49,62 +49,61 @@ test('Agile diagnosis uses the working ERP response and skips incompatible pedid
       client_id:'LOCAL-TEST-ID', client_secret:'LOCAL-TEST-SECRET'
     });
     global.fetch = async (url, opts) => {
-      requests.push({ url, ...opts });
-      if (url.endsWith('/api/usuario/login')) {
+      requests.push({ url:String(url), ...opts });
+      const target = String(url);
+      if (target.endsWith('/api/usuario/login')) {
         return { ok:true, status:200, json:async()=>({
-          Token:'JWT-TEST-ONLY', Expiration:3600
+          Token:'JWT-TEST-ONLY', Expiration:'2099-01-01T00:00:00.000Z'
         }) };
       }
-      if (url.includes('/erp_pedidos_produtos')) {
+      if (target.includes('/integracao/clientes?')) {
         return { ok:true, status:200, json:async()=>({
-          data:[
-            { id_pedido_erp:'67890', id_produto:'4702', quantidade:'2',
-              descricao_produto_snapshot:'Ketchup', valor_total:'25.50' },
-            { id_pedido_erp:'OTHER-CLIENT', id_produto:'333',
-              descricao_produto_snapshot:'Another customer product' }
-          ],meta:{total:406532}
+          data:[{ id:'01450747221', codigo:'12678', telefone:'SECRET-PII' }], meta:{total:1}
         }) };
       }
-      if (url.includes('/erp_pedidos')) {
+      if (target.includes('/integracao/pedidos?')) {
         return { ok:true, status:200, json:async()=>({
           data:[
-            { id:'ERP-INTERNAL-1', codigo_cliente_erp:'12678',
-              id_pedido_erp:'67890', id_transacao_venda:'TX1',
-              status_erp:'em_separacao', data_cancelamento:'2026-10-15' },
-            { id:'ERP-INTERNAL-2', codigo_cliente_erp:'12678',
-              id_pedido_erp:'67891', status_erp:'em_separacao' },
-            { id:'ERP-OTHER', codigo_cliente_erp:'88888',
-              id_pedido_erp:'99999', telefone:'SECRET-PII' }
-          ],meta:{total:3}
+            { id:'1000018742', id_cliente:'01450747221', confirmado:true,
+              status:'recebido', valor_total:159.99, id_transacao:'1000018742', codigo:null },
+            { id:'1000018740', id_cliente:'01450747221', confirmado:true,
+              status:'cancelado', cancelado:true, valor_total:159.99 }
+          ], meta:{total:2}
         }) };
       }
-      throw new Error('Unexpected Agile path: ' + url);
+      if (target.includes('/integracao/pedidos_produtos?')) {
+        return { ok:true, status:200, json:async()=>({
+          data:[{ id_pedido:'1000018742', id_produto:'7993', quantidade:1,
+            valor_total:159.99, json:'{"nome":"MARGARINA ELOGIATA BALDE-15KG 60%"}' }],
+          meta:{total:1}
+        }) };
+      }
+      if (target.includes('/integracao/erp_pedidos')) {
+        return { ok:false, status:404, json:async()=>({ message:'missing' }) };
+      }
+      throw new Error('Unexpected Agile path: ' + target);
     };
     agile.resetSession();
     const result = await agile.diagnose();
-    assert.equal(requests.length, 3); // login, ERP orders, products
     assert.equal(requests[0].url,
       'https://api-integracao.agileecommerce.com.br/api/usuario/login');
     assert.equal(requests[0].redirect, 'error');
-    assert.equal(requests[1].method, 'GET');
-    assert.equal(requests[1].headers.Authorization, 'Bearer JWT-TEST-ONLY');
-    assert.equal(requests.some(r => /\/integracao\/pedidos\?/.test(r.url)), false);
+    const pedidos = requests.find(r => /\/integracao\/pedidos\?/.test(r.url));
+    assert.ok(pedidos);
+    assert.match(pedidos.url, /id_cliente=01450747221/);
+    assert.match(pedidos.url, /sort=data/);
+    assert.match(pedidos.url, /order=DESC/);
+    assert.match(pedidos.url, /limit=5/);
+    assert.equal(pedidos.headers.Authorization, 'Bearer JWT-TEST-ONLY');
     assert.equal(result.connected, true);
-    assert.equal(result.sources.length, 2);
-    assert.equal(result.sources[0].totem_found, 2);
-    assert.equal(result.sources[0].cancelled, 1);
-    assert.equal(result.sources[0].awaiting_verification, 0);
-    assert.equal(result.orders[0].erp_order, '67890');
-    assert.equal(result.orders[0].transaction, 'TX1');
-    assert.equal(result.orders[0].cancelled, true);
-    assert.equal(result.orders[0].print_eligible, false);
-    assert.equal(result.orders[1].print_eligible, true);
+    assert.equal(result.orders[0].agile_id, '1000018742');
+    assert.equal(result.orders[0].print_eligible, true);
+    assert.equal(result.orders[0].erp_order, '');
+    assert.equal(result.orders[1].print_eligible, false);
     assert.equal(result.itemSample.count, 1);
+    assert.equal(result.itemSample.items[0].product_name, 'MARGARINA ELOGIATA BALDE-15KG 60%');
     assert.equal(JSON.stringify(result).includes('SECRET-PII'), false);
-    assert.deepEqual(await agile.itemsForOrder(result.orders[0]), [{
-      product_id:'4702', product_name:'Ketchup',
-      quantity:'2', price:'', value:'25.50'
-    }]);
+    assert.equal(result.sources.some(s => s.resource === 'erp_pedidos' && s.optional && !s.ok), true);
   } finally {
     storage.loadAgileCredentials = oldLoad;
     global.fetch = oldFetch;

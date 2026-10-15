@@ -17,7 +17,8 @@ function orderRow(id, status = 'em_separacao', created = new Date().toISOString(
     status_erp:status,
     valor_total:'30.00',
     data_pedido:created,
-    data_cancelamento:null
+    data_cancelamento:null,
+    confirmado:true
   };
 }
 
@@ -25,6 +26,7 @@ function mocks() {
   const original = {
     configured:agile.configured,
     list:agile.list,
+    recentOrders:agile.recentOrders,
     itemsForOrder:agile.itemsForOrder,
     selectedPrinter:storage.selectedPrinter,
     installedPrinters:printer.installedPrinters,
@@ -42,6 +44,9 @@ function mocks() {
   let observed = [];
   agile.configured = () => true;
   agile.list = async () => ({data:observed});
+  agile.recentOrders = async () => ({
+    orders:observed.map(row => agile.safeTotemOrder(row, 'pedidos')).filter(Boolean)
+  });
   agile.itemsForOrder = async () => [{
     product_id:'4702',product_name:'Ketchup',quantity:'1',
     price:'30.00',value:'30.00'
@@ -65,6 +70,7 @@ function mocks() {
     restore(){
       agile.configured=original.configured;
       agile.list=original.list;
+      agile.recentOrders=original.recentOrders;
       agile.itemsForOrder=original.itemsForOrder;
       storage.selectedPrinter=original.selectedPrinter;
       printer.installedPrinters=original.installedPrinters;
@@ -133,11 +139,13 @@ test('rate limit backs off before another query and does not lose a pending chec
     history.pendingCheckout=()=>({
       session:'SESSION-1',hint:'X',amount:30,at:new Date().toISOString()
     });
-    agile.list=async()=>{requests++;throw new Error('Agile HTTP 429: limite atingido. Nova consulta em 80s.');};
+    agile.recentOrders=async()=>{requests++;throw new Error('Agile HTTP 429: limite atingido. Nova consulta em 80s.');};
     const worker = new AgilePrintWorker({});
     await worker.tick();
     assert.equal(requests,1);
-    assert.ok(worker.cooldownUntil > Date.now() + 70000);
+    const wait = worker.cooldownUntil - Date.now();
+    assert.ok(wait <= 60000, 'backoff stays within about 60s');
+    assert.ok(wait >= 55000, 'Retry-After is honored up to the cap');
     await worker.tick();
     assert.equal(requests,1);
     assert.equal(testenv.output.length,0);

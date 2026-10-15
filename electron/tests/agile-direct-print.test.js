@@ -12,7 +12,7 @@ const { receipt, AgilePrintWorker, printOrder, matchCheckout } = require('../agi
 function order(id, overrides = {}) {
   return {
     agile_id:id,erp_order:'',transaction:'T-' + id,
-    amount:'25.50',status:'recebido',source:'pedidos',
+    amount:'25.50',status:'recebido',source:'pedidos',confirmado:true,
     created_at:new Date().toISOString(),cancelled:false,...overrides
   };
 }
@@ -26,7 +26,11 @@ test('receipt marks Agile order correctly even before WinThor exists', () => {
   assert.match(out, /NAO E DOCUMENTO FISCAL/);
   assert.match(out, /R\$ 10,00/);
   assert.doesNotMatch(out, /NUMPED WINTHOR: A-123/);
-  assert.throws(() => receipt(order('A-123'), []), /produtos/);
+  const totalOnly = receipt(order('A-123'), []);
+  assert.match(totalOnly, /TOTAL DO PEDIDO: R\$ 25,50/);
+  assert.match(totalOnly, /ITENS INDISPONIVEIS NO AGILE/);
+  assert.doesNotMatch(totalOnly, /Ketchup|4702/);
+  assert.throws(() => receipt(order('A-123', { amount:'' }), []), /sem total/);
 });
 
 test('new Agile orders print without WinThor approval, but cancelled and draft remain blocked', () => {
@@ -39,6 +43,8 @@ test('new Agile orders print without WinThor approval, but cancelled and draft r
   assert.equal(agile.printEligibility(order('CANCEL2',{status:'cancelado',status_erp:'recebido'})), false);
   assert.equal(agile.printEligibility(order('PENDING',{status:'pendente'})), true);
   assert.equal(agile.printEligibility(order('DRAFT',{status:'rascunho'})), false);
+  assert.equal(agile.printEligibility(order('CART',{status:'carrinho',confirmado:false})), false);
+  assert.equal(agile.printEligibility(order('OPEN',{status:'recebido',confirmado:false})), false);
 });
 
 test('received ERP record fetches exact linked products by id_pedido without NUMPED', async () => {
@@ -98,7 +104,8 @@ test('checkout correlation never prints random orders sharing customer 12678', (
 
 test('worker prints only checkout-correlated received sale, once, then clears durable pending state', async () => {
   const original = {
-    configured:agile.configured, list:agile.list, items:agile.itemsForOrder,
+    configured:agile.configured, list:agile.list, recent:agile.recentOrders,
+    items:agile.itemsForOrder,
     selected:storage.selectedPrinter, printers:printer.installedPrinters,
     print:printer.printReceipt, get:history.get, update:history.update,
     pending:history.pendingCheckout, save:history.setPendingCheckout,
@@ -133,12 +140,12 @@ test('worker prints only checkout-correlated received sale, once, then clears du
     history.pendingCheckout = () => pending;
     history.setPendingCheckout = data => {pending = data;return data;};
     history.clearPendingCheckout = () => {pending = null;};
-    agile.list = async () => ({
-      data:[old,current].map(x => ({
-        id:x.agile_id,id_pedido_erp:x.erp_order,
-        codigo_cliente_erp:'12678',status_erp:x.status,
-        valor_total:x.amount,data_pedido:x.created_at
-      }))
+    agile.recentOrders = async () => ({
+      orders:[old,current].map(x => agile.safeTotemOrder({
+        id:x.agile_id,id_pedido_erp:x.erp_order,confirmado:true,
+        codigo_cliente_erp:'12678',status:x.status,
+        valor_total:x.amount,data:x.created_at
+      }, 'pedidos')).filter(Boolean)
     });
     const worker = new AgilePrintWorker({}, {
       onStatus:e => events.push(e),
@@ -160,6 +167,7 @@ test('worker prints only checkout-correlated received sale, once, then clears du
     assert.equal(outputs.length,1);
   } finally {
     agile.configured=original.configured;agile.list=original.list;
+    agile.recentOrders=original.recent;
     agile.itemsForOrder=original.items;storage.selectedPrinter=original.selected;
     printer.installedPrinters=original.printers;printer.printReceipt=original.print;
     history.get=original.get;history.update=original.update;
@@ -172,7 +180,8 @@ test('worker prints only checkout-correlated received sale, once, then clears du
 
 test('printer failure does not release checkout or delete the pending job', async () => {
   const original = {
-    configured:agile.configured,list:agile.list,items:agile.itemsForOrder,
+    configured:agile.configured,list:agile.list,recent:agile.recentOrders,
+    items:agile.itemsForOrder,
     selected:storage.selectedPrinter,printers:printer.installedPrinters,
     print:printer.printReceipt,get:history.get,update:history.update,
     pending:history.pendingCheckout,clear:history.clearPendingCheckout
@@ -187,16 +196,17 @@ test('printer failure does not release checkout or delete the pending job', asyn
     history.pendingCheckout=()=>pending;
     history.clearPendingCheckout=()=>{pending=null;};
     history.get=()=>null;history.update=(o)=>o;
-    agile.list=async()=>({data:[{
-      id:'NEW',codigo_cliente_erp:'12678',status_erp:'recebido',
-      data_pedido:new Date().toISOString(),valor_total:'25.50'
-    }]});
+    agile.recentOrders=async()=>({orders:[agile.safeTotemOrder({
+      id:'NEW',codigo_cliente_erp:'12678',status:'recebido',confirmado:true,
+      data:new Date().toISOString(),valor_total:'25.50'
+    }, 'pedidos')].filter(Boolean)});
     const worker=new AgilePrintWorker({}, {onPrinted:()=>{printed=true;}});
     await worker.tick();
     assert.ok(pending);
     assert.equal(printed,false);
   } finally {
     agile.configured=original.configured;agile.list=original.list;
+    agile.recentOrders=original.recent;
     agile.itemsForOrder=original.items;storage.selectedPrinter=original.selected;
     printer.installedPrinters=original.printers;printer.printReceipt=original.print;
     history.get=original.get;history.update=original.update;
@@ -218,11 +228,14 @@ test('thank-you screen stays locked until native print acknowledgment then reloa
   assert.match(flow,/action: 'completion-lock',\s*order:/);
 });
 
-test('always-on Agile monitor polls every 10 seconds and never uses HernandesDash', () => {
+test('always-on Agile monitor uses one 3s timeout chain and never uses HernandesDash', () => {
   const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');
   const worker=fs.readFileSync(path.join(__dirname,'..','agile-print.js'),'utf8');
-  assert.match(worker,/setInterval\(\(\) => void this\.tick\(\), 10000\)/);
+  assert.match(worker,/POLL_MS = 3000/);
+  assert.match(worker,/setTimeout\(/);
+  assert.doesNotMatch(worker,/setInterval\(/);
   assert.match(main,/new agilePrint\.AgilePrintWorker/);
+  assert.match(main,/worker\.start\(\)/);
   assert.doesNotMatch(main,/api\.sendEvent\(/);
   assert.doesNotMatch(worker,/\/printer\/claim|new PrintWorker/);
 });
