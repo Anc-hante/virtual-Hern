@@ -7,9 +7,12 @@ const storage = require('../storage');
 test('Hernandes API 429 respects retry-after and does not hammer printer/history endpoints', async () => {
   const oldFetch = global.fetch;
   const oldRead = storage.loadAgentToken;
+  const oldInternalMode = storage.allowInternalCertificate;
   let calls = 0;
   try {
     storage.loadAgentToken = () => 'TEST-NOT-REAL';
+    // Force strict fetch transport so the 429 mock exercises request() on Windows.
+    storage.allowInternalCertificate = () => false;
     global.fetch = async () => {
       calls++;
       return {
@@ -24,6 +27,7 @@ test('Hernandes API 429 respects retry-after and does not hammer printer/history
   } finally {
     global.fetch = oldFetch;
     storage.loadAgentToken = oldRead;
+    storage.allowInternalCertificate = oldInternalMode;
   }
 });
 
