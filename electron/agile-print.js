@@ -79,77 +79,150 @@ async function printOrder(order, contents, { reprint = false } = {}) {
     throw e;
   }
 }
+// A checkout signal comes from the ecommerce's real order confirmation.
+// No background printing of unrelated/historical orders from customer 12678.
+function matchCheckout(orders, pending) {
+  const live = orders.filter(order => order && !isCancelled(order));
+  const hint = String(pending?.hint || '').trim();
+  if (hint) {
+    const matched = live.filter(order =>
+      [order.agile_id, order.erp_order, order.transaction]
+        .some(id => String(id || '') === hint)
+    );
+    return matched.length === 1
+      ? { order:matched[0] }
+      : { reason:matched.length > 1
+        ? 'Mais de um pedido Agile possui este identificador. Consulte o administrador.'
+        : 'Aguardando o numero do pedido aparecer no Agile.' };
+  }
+
+  // When the popup contains no ID, correlate strictly by amount + time.
+  // Never print a random recent order belonging to a shared WinThor customer.
+  const amount = Number(pending?.amount);
+  const at = Date.parse(pending?.at || '');
+  if (pending?.amount == null || !Number.isFinite(amount) || !Number.isFinite(at)) {
+    return { reason:'A confirmacao nao informou o numero nem o valor do pedido. Necessaria identificacao antes de imprimir.' };
+  }
+  const matched = live.filter(order => {
+    const orderAmount = Number(order.amount);
+    const created = Date.parse(order.created_at || '');
+    return Number.isFinite(orderAmount) && Math.abs(orderAmount - amount) < 0.005 &&
+      Number.isFinite(created) && created >= at - 15 * 60 * 1000 &&
+      created <= at + 10 * 60 * 1000;
+  });
+  if (matched.length === 1) return { order:matched[0] };
+  return { reason:matched.length > 1
+    ? 'Ha varios pedidos recentes com o mesmo valor. Nao vou imprimir um pedido de outro atendimento.'
+    : 'Aguardando o pedido recebido aparecer no Agile.' };
+}
+
 class AgilePrintWorker {
-  constructor(contents) {
+  constructor(contents, hooks = {}) {
     this.contents = contents;
     this.timer = null;
     this.busy = false;
-    this.initialized = false;
     this.cooldownUntil = 0;
+    this.onStatus = hooks.onStatus || (() => {});
+    this.onPrinted = hooks.onPrinted || (() => {});
   }
   start() {
     if (this.timer) return;
-    // Agile has its own rate limits. No 6-second polling.
-    this.timer = setInterval(() => void this.tick(), 45000);
+    // The live checkout receives an immediate query; pending receipts are
+    // retried without flooding Agile or reprinting old sales.
+    this.timer = setInterval(() => void this.tick(), 12000);
+    if (ledger.pendingCheckout()) void this.tick();
+  }
+  stop() {
+    clearInterval(this.timer);
+    this.timer = null;
+  }
+  beginCheckout(data = {}) {
+    const existing = ledger.pendingCheckout();
+    const session = String(data.session || '');
+    if (existing && existing.session === session) {
+      void this.tick();
+      return existing;
+    }
+    const pending = ledger.setPendingCheckout({
+      at:new Date().toISOString(),
+      session,
+      hint:String(data.order_number || '').trim(),
+      amount:data.amount
+    });
+    this.cooldownUntil = 0;
+    this.onStatus({ state:'waiting', message:'Aguardando o pedido recebido no Agile…', session });
+    void this.tick();
+    return pending;
+  }
+  retryCheckout() {
+    // Do not override a rate limit imposed by the Agile API.
+    this.onStatus({ state:'waiting', message:'Verificando o pedido e a impressora…' });
     void this.tick();
   }
-  stop() { clearInterval(this.timer); this.timer = null; }
   async tick() {
     if (this.busy || Date.now() < this.cooldownUntil) return;
+    const pending = ledger.pendingCheckout();
+    if (!pending) return;
     this.busy = true;
     try {
-      if (!agile.configured() || !storage.selectedPrinter()) return;
-      const records = await agile.list('erp_pedidos',
-        { codigo_cliente_erp: agile.CUSTOMER_CODE }, 1, 20);
-      const current = records.data.map(r => agile.safeTotemOrder(r, 'erp_pedidos')).filter(Boolean);
-      if (!this.initialized) {
-        // Do not auto-print all historical orders when the kiosk is first
-        // installed or when credentials are entered for the first time.
-        for (const order of current) {
-          const seen = ledger.get(order.agile_id);
-          if (isCancelled(order)) {
-            ledger.update(order, { print_status:'cancelled' });
-          } else if (!seen || ['available', 'awaiting_verification'].includes(seen.print_status)) {
-            ledger.update(order, { print_status:'historical' });
-          } else {
-            ledger.update(order); // Refresh cancellation and status evidence.
-          }
-        }
-        this.initialized = true;
+      if (!agile.configured()) {
+        throw new Error('Configure Client ID e Client Secret do Agile no admin.');
+      }
+      if (!storage.selectedPrinter()) {
+        throw new Error('Nenhuma impressora salva. Solicite ajuda ao atendente.');
+      }
+      const response = await agile.list('erp_pedidos',
+        { codigo_cliente_erp:agile.CUSTOMER_CODE }, 1, 25);
+      const orders = response.data.map(row =>
+        agile.safeTotemOrder(row, 'erp_pedidos')).filter(Boolean);
+      const found = matchCheckout(orders, pending);
+      if (!found.order) {
+        this.onStatus({ state:'waiting', message:found.reason, session:pending.session });
         return;
       }
-      for (const order of current.slice().reverse()) {
-        const seen = ledger.get(order.agile_id);
-        if (isCancelled(order)) {
-          ledger.update(order, { print_status:'cancelled' });
-          continue;
-        }
-        if (!agile.printEligibility(order)) {
-          // The API can still show em_separacao after an operator cancels the
-          // order. This status cannot authorize a physical receipt.
-          if (!seen || seen.print_status === 'available') {
-            ledger.update(order, { print_status:'awaiting_verification' });
-          }
-          continue;
-        }
-        if (seen?.print_count > 0 || seen?.print_status === 'historical' ||
-            seen?.print_status === 'claimed' || seen?.print_status === 'cancelled') continue;
-        try {
-          await printOrder(order, this.contents);
-        } catch (e) {
-          // Do not lose the order: retry only after a cooldown, and do not
-          // keep hammering the endpoint if items are not yet synchronized.
-          console.warn('[Agile] Cupom ainda nao disponivel:', e.message);
-          this.cooldownUntil = Date.now() + 120000;
-          break;
-        }
+      const order = found.order;
+      if (isCancelled(order)) {
+        throw new Error('Pedido cancelado no Agile. Cupom nao sera impresso.');
       }
+      if (!agile.printEligibility(order)) {
+        this.onStatus({
+          state:'waiting',
+          message:'Pedido localizado, aguardando status Recebido no Agile.',
+          session:pending.session
+        });
+        return;
+      }
+      const previous = ledger.get(order.agile_id);
+      if (previous?.print_count > 0) {
+        ledger.clearPendingCheckout();
+        this.onPrinted({ session:pending.session, order_id:order.agile_id, duplicate:true });
+        return;
+      }
+      this.onStatus({ state:'printing', message:'Pedido recebido! Enviando cupom para a impressora…', session:pending.session });
+      const result = await printOrder(order, this.contents);
+      if (!result.printed && !result.duplicate) throw new Error('Impressao nao confirmada pelo Windows.');
+      ledger.clearPendingCheckout();
+      this.onPrinted({
+        session:pending.session, order_id:order.agile_id,
+        duplicate:!!result.duplicate
+      });
     } catch (e) {
-      console.warn('[Agile] Consulta de pedidos aguardando:', e.message);
-      this.cooldownUntil = Date.now() + (/429/.test(e.message) ? 180000 : 60000);
+      const msg = String(e.message || 'Impressao indisponivel.');
+      // An HTTP 429 is already throttled by agile.js; additionally
+      // cool down the kiosk worker so it doesn't ping-pong in the UI.
+      this.cooldownUntil = Date.now() + (/429/.test(msg) ? 60000 :
+        /Itens ainda indisponiveis|produtos deste pedido/.test(msg) ? 22000 : 12000);
+      this.onStatus({
+        state:'waiting',
+        message:/Itens ainda indisponiveis/.test(msg)
+          ? 'Pedido recebido; aguardando produtos completos no Agile.'
+          : msg,
+        session:pending.session
+      });
+      console.warn('[Agile] Cupom do checkout ainda pendente:', msg);
     } finally {
       this.busy = false;
     }
   }
 }
-module.exports = { receipt, printOrder, AgilePrintWorker, isCancelled };
+module.exports = { receipt, printOrder, AgilePrintWorker, isCancelled, matchCheckout };
