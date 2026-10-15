@@ -407,7 +407,7 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       let syncError = '';
       try {
         // Refresh the on-device list directly from Agile. No HernandesDash.
-        const page = await agile.list('pedidos', {}, 1, 25);
+        const page = await agile.list('pedidos', { codcli:agile.CUSTOMER_CODE }, 1, 25);
         for (const record of page.data) {
           const order = agile.safeTotemOrder(record, 'pedidos');
           if (order && !agileHistory.get(order.agile_id)) {
