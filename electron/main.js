@@ -26,6 +26,9 @@ let completionLocked = false;
 let receiptConfirmed = false;
 let completedCheckoutId = '';
 let returnHomeTimer = null;
+let adminReturnScreen = 'shop';
+let latestPrintMessage = '';
+let latestPrintState = 'waiting';
 let sessionId = crypto.randomUUID();
 let attempts = 0;
 let lockUntil = 0;
@@ -131,6 +134,8 @@ async function resetService() {
     newSession();
     receiptConfirmed = false;
     completedCheckoutId = '';
+    latestPrintMessage = '';
+    latestPrintState = 'waiting';
     showScreen('shop');
     return { ok:true };
   } catch (e) {
@@ -143,6 +148,8 @@ function completion(orderData = {}) {
   completionLocked = true;
   receiptConfirmed = false;
   completedCheckoutId = sessionId;
+  latestPrintState = 'waiting';
+  latestPrintMessage = 'Procurando seu pedido recebido no Agile…';
   showScreen('complete', {
     printState:'waiting',
     printMessage:'Procurando seu pedido recebido no Agile…'
@@ -247,20 +254,24 @@ function createWindow() {
 
   worker = new agilePrint.AgilePrintWorker(site.webContents, {
     onStatus: status => {
-      if (screen !== 'complete' || !completionLocked ||
+      if (!completionLocked ||
           (status.session && status.session !== completedCheckoutId)) return;
-      emitState({ printState:status.state, printMessage:status.message });
+      latestPrintState = status.state;
+      latestPrintMessage = status.message;
+      if (screen === 'complete') {
+        emitState({ printState:latestPrintState, printMessage:latestPrintMessage });
+      }
     },
     onPrinted: result => {
-      if (screen !== 'complete' || !completionLocked ||
-          result.session !== completedCheckoutId) return;
+      if (!completionLocked || result.session !== completedCheckoutId) return;
       receiptConfirmed = true;
-      emitState({
-        printState:'printed',
-        printMessage:'Comprovante enviado à impressora! Preparando novo atendimento…'
-      });
-      if (returnHomeTimer) clearTimeout(returnHomeTimer);
-      returnHomeTimer = setTimeout(() => void resetService(), 2500);
+      latestPrintState = 'printed';
+      latestPrintMessage = 'Comprovante enviado ao Windows! Preparando novo atendimento…';
+      if (screen === 'complete') {
+        emitState({ printState:latestPrintState, printMessage:latestPrintMessage });
+        if (returnHomeTimer) clearTimeout(returnHomeTimer);
+        returnHomeTimer = setTimeout(() => void resetService(), 2500);
+      }
     }
   });
   worker.start();
@@ -333,15 +344,26 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       worker.retryCheckout();
       return { ok:true, message:'Verificacao solicitada. Aguarde o Agile.' };
     case 'admin:open':
-      if (screen !== 'shop') return { ok: false };
+      if (screen !== 'shop' && screen !== 'complete') return { ok:false };
+      adminReturnScreen = screen;
       attempts = 0;
       showScreen('login');
-      return { ok: true };
+      return { ok:true };
     case 'admin:close':
       if (screen === 'login' || screen === 'printers') {
-        showScreen('shop');
+        if (adminReturnScreen === 'complete' && completionLocked) {
+          showScreen('complete', {
+            printState:latestPrintState, printMessage:latestPrintMessage
+          });
+          if (receiptConfirmed) {
+            if (returnHomeTimer) clearTimeout(returnHomeTimer);
+            returnHomeTimer = setTimeout(() => void resetService(), 2500);
+          }
+        } else {
+          showScreen('shop');
+        }
       }
-      return { ok: true };
+      return { ok:true };
     case 'admin:login': {
       if (screen !== 'login') return { ok: false };
       if (Date.now() < lockUntil) {
