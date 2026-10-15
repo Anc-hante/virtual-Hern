@@ -150,6 +150,7 @@ function safeTotemOrder(row, resource = 'erp_pedidos') {
   const cancelled = isCancelledRecord(row);
   const order = {
     agile_id: id || ('erp:' + erpOrder),
+    external_order_id: text(value(row, ['external_order_id', 'id_pedido_rca'])),
     erp_order: erpOrder,
     transaction: text(value(row, ['id_transacao_venda', 'transacao', 'nsu_transacao'])),
     status: text(value(row, ['status', 'status_operacional', 'status_erp'])),
