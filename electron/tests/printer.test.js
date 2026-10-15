@@ -84,6 +84,11 @@ test('native spooler script is shipped with the application', () => {
   const printerSource = fs.readFileSync(
     path.join(__dirname, '..', 'printer.js'), 'utf8'
   );
-  assert.match(printerSource, /printWithWindows\(printerName, content\)/);
+  // Both the paper copy and the QR must travel through the Windows spooler.
+  // This is a three-argument call since the registration QR was introduced.
+  assert.match(
+    printerSource,
+    /printWithWindows\(\s*printerName,\s*content,\s*\{\s*qrPngBase64\s*\}\s*\)/
+  );
   assert.doesNotMatch(printerSource, /new BrowserWindow|loadFile|loadURL|receiptTextScript/);
 });
