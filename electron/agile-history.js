@@ -108,8 +108,7 @@ function history(search = '', offset = 0, limit = 25) {
       occurred_at:x.created_at, amount:Number(x.amount) || null,
       print_count:x.print_count, print_status:x.print_status,
       cancelled:!!x.cancelled, print_eligible:x.print_eligible === true,
-      reprint_allowed: x.print_count > 0 &&
-        x.print_eligible === true && !x.cancelled &&
+      reprint_allowed: x.print_eligible === true && !x.cancelled &&
         x.print_status !== 'claimed' && x.print_status !== 'cancelled',
       source:'agile'
     })),
