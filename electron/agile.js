@@ -132,12 +132,17 @@ function isCancelledRecord(row) {
   );
 }
 function printEligibility(order) {
-  if (!order || order.cancelled || isCancelledRecord(order)) return false;
-  // A real Agile order becomes printable on "recebido", before ERP invoicing.
-  // Separating and pending states alone are not proof of receipt.
-  return [order.status, order.status_agile, order.status_erp]
-    .some(raw => /(^|[_\s-])(recebid[oa]?|aprovad[oa]?|confirmad[oa]?|faturad[oa]?|liberad[oa]?|concluid[oa]?|autorizad[oa]?)(?=$|[_\s-])/
-      .test(normalizedStatus(raw)));
+  // A submitted Agile order is sufficient to print a NON-FISCAL request
+  // receipt. An ERP status or WinThor NUMPED is not a prerequisite.
+  // Draft and explicitly cancelled records are never eligible.
+  if (!order || !order.agile_id || order.cancelled || isCancelledRecord(order)) {
+    return false;
+  }
+  const statuses = [order.status, order.status_agile, order.status_erp]
+    .map(normalizedStatus).filter(Boolean);
+  return !statuses.some(value =>
+    /rascunh|draft|carrinho|em_edicao|nao_finalizad|cancel|rejeitad|estornad|excluid|inativ/.test(value)
+  );
 }
 function safeTotemOrder(row, resource = 'erp_pedidos') {
   if (!row || typeof row !== 'object') return null;
@@ -187,8 +192,8 @@ function matchingItem(row, order) {
     text(row?.id_pedido) === text(order?.agile_id);
 }
 
-// The user's Agile account returns ERP orders and products, but the
-// /pedidos response currently has no documented {data: []} shape.
+// Use an authoritative Agile business order ID; ERP numbering is OPTIONAL.
+// The /pedidos endpoint may differ in this tenant, so do not guess its shape.
 // One authoritative ERP request plus at most one filtered items request.
 // No broad scan of the entire 400k+ product table, no printing.
 async function diagnose() {
@@ -240,7 +245,7 @@ async function diagnose() {
   return {
     connected:true, sources, orders:matches.slice(0, 10), itemSample,
     warning:matches.some(x=>!x.cancelled && !x.print_eligible)
-      ? 'Alguns pedidos ERP ainda nao tem confirmacao segura. Nao serao impressos automaticamente.'
+      ? 'Alguns registros sao rascunhos ou nao tem identificacao valida; nao serao impressos.'
       : ''
   };
 }
