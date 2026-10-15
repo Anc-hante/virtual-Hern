@@ -21,23 +21,24 @@ test('receipt marks Agile order correctly even before WinThor exists', () => {
   const out = receipt(order('A-123'), [{
     product_id:'4702',product_name:'Ketchup',quantity:'2',price:'10.00',value:'20.00'
   }]);
-  assert.match(out, /PEDIDO AGILE: A-123/);
+  assert.match(out, /TRANSACAO AGILE: T-A-123/);
   assert.match(out, /WINTHOR: AGUARDANDO INTEGRACAO/);
-  assert.match(out, /TRANSACAO: T-A-123/);
+  assert.match(out, /NAO E DOCUMENTO FISCAL/);
   assert.match(out, /R\$ 10,00/);
   assert.doesNotMatch(out, /NUMPED WINTHOR: A-123/);
   assert.throws(() => receipt(order('A-123'), []), /produtos/);
 });
 
-test('Agile "recebido" is printable before invoicing; uncertain or cancelled stays blocked', () => {
+test('new Agile orders print without WinThor approval, but cancelled and draft remain blocked', () => {
   assert.equal(agile.printEligibility(order('RECEIVED')), true);
   assert.equal(agile.printEligibility(order('RECEIVED-2', {
     status:'em_separacao',status_agile:'pedido recebido',status_erp:'em_separacao'
   })), true);
-  assert.equal(agile.printEligibility(order('SPLIT',{status:'em_separacao'})), false);
+  assert.equal(agile.printEligibility(order('SPLIT',{status:'em_separacao'})), true);
   assert.equal(agile.printEligibility(order('CANCEL',{status:'recebido',cancelled:true})), false);
   assert.equal(agile.printEligibility(order('CANCEL2',{status:'cancelado',status_erp:'recebido'})), false);
-  assert.equal(agile.printEligibility(order('PENDING',{status:'pendente'})), false);
+  assert.equal(agile.printEligibility(order('PENDING',{status:'pendente'})), true);
+  assert.equal(agile.printEligibility(order('DRAFT',{status:'rascunho'})), false);
 });
 
 test('received ERP record fetches exact linked products by id_pedido without NUMPED', async () => {
@@ -99,10 +100,12 @@ test('worker prints only checkout-correlated received sale, once, then clears du
     selected:storage.selectedPrinter, printers:printer.installedPrinters,
     print:printer.printReceipt, get:history.get, update:history.update,
     pending:history.pendingCheckout, save:history.setPendingCheckout,
-    clear:history.clearPendingCheckout
+    clear:history.clearPendingCheckout,
+    initialized:history.monitorInitialized, init:history.initializeMonitor
   };
   const records = new Map();
   let pending = null;
+  let initialized = false;
   const outputs = [];
   const events = [];
   const old = order('PREVIOUS',{amount:'18.00'});
@@ -116,6 +119,8 @@ test('worker prints only checkout-correlated received sale, once, then clears du
       price:'12.75',value:'25.50'
     }];
     printer.printReceipt = async (_name, text) => {outputs.push(text);};
+    history.monitorInitialized = () => initialized;
+    history.initializeMonitor = () => {initialized = true;};
     history.get = id => records.get(id) || null;
     history.update = (data, changes = {}) => {
       const old = records.get(data.agile_id) || {};
@@ -158,6 +163,8 @@ test('worker prints only checkout-correlated received sale, once, then clears du
     history.get=original.get;history.update=original.update;
     history.pendingCheckout=original.pending;history.setPendingCheckout=original.save;
     history.clearPendingCheckout=original.clear;
+    history.monitorInitialized=original.initialized;
+    history.initializeMonitor=original.init;
   }
 });
 
@@ -209,10 +216,10 @@ test('thank-you screen stays locked until native print acknowledgment then reloa
   assert.match(flow,/action: 'completion-lock',\s*order:/);
 });
 
-test('old 45-second background loop and automated historic sales printing are removed', () => {
+test('always-on Agile monitor polls every 10 seconds and never uses HernandesDash', () => {
   const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');
   const worker=fs.readFileSync(path.join(__dirname,'..','agile-print.js'),'utf8');
-  assert.match(worker,/setInterval\(\(\) => void this\.tick\(\), 12000\)/);
+  assert.match(worker,/setInterval\(\(\) => void this\.tick\(\), 10000\)/);
   assert.match(main,/new agilePrint\.AgilePrintWorker/);
   assert.doesNotMatch(main,/api\.sendEvent\(/);
   assert.doesNotMatch(worker,/\/printer\/claim|new PrintWorker/);
