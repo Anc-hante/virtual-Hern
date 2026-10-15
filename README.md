@@ -207,7 +207,7 @@ teste na rede da empresa, abra **Admin > Conexao com API** e marque
 autoridade certificadora**; clique em **Aplicar modo HTTPS interno** e
 depois **Testar conexao**.
 
-A excecao e **desligada por padrao** e **somente** vale para
+Na versao de homologacao, a excecao e **ligada por padrao** e **somente** vale para
 `https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem/`.
 Nao altera a validacao TLS do ecommerce, Agile, outros hosts ou Chromium.
 Nao usa `NODE_TLS_REJECT_UNAUTHORIZED=0`. Os tokens continuam
