@@ -34,6 +34,9 @@ function update(order, changes = {}) {
     status: String(order.status || old.status || ''),
     created_at: String(order.created_at || old.created_at || ''),
     source: String(order.source || old.source || 'pedidos'),
+    cancelled: !!(order.cancelled || old.cancelled),
+    cancellation_date: String(order.cancellation_date || old.cancellation_date || ''),
+    print_eligible: order.print_eligible === true && !order.cancelled,
     print_count: Number(changes.print_count ?? old.print_count ?? 0),
     print_status: String(changes.print_status || old.print_status || 'pending'),
     last_error: String(changes.last_error ?? old.last_error ?? '').slice(0, 180),
@@ -58,7 +61,10 @@ function history(search = '', offset = 0, limit = 25) {
       number_type:x.erp_order ? 'winthor' : 'agile',
       occurred_at:x.created_at, amount:Number(x.amount) || null,
       print_count:x.print_count, print_status:x.print_status,
-      reprint_allowed: x.print_status !== 'claimed',
+      cancelled:!!x.cancelled, print_eligible:x.print_eligible === true,
+      reprint_allowed: x.print_count > 0 &&
+        x.print_eligible === true && !x.cancelled &&
+        x.print_status !== 'claimed' && x.print_status !== 'cancelled',
       source:'agile'
     })),
     next_offset:start + limit < rows.length ? start + limit : null
