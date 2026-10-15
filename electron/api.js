@@ -7,7 +7,12 @@ const BASE = (
   process.env.HERNANDES_TOTEM_API_BASE_URL ||
   'https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem'
 ).replace(/\/$/, '');
-const TOKEN = process.env.HERNANDES_TOTEM_API_TOKEN || '';
+function agentToken() {
+  // Local admin-entered token overrides an optional machine environment
+  // token; both stay outside source control and the renderer process.
+  const stored = storage.loadAgentToken();
+  return stored || process.env.HERNANDES_TOTEM_API_TOKEN || '';
+}
 const DEVICE = storage.loadDeviceId();
 
 function explainApiError(error) {
@@ -37,7 +42,7 @@ async function request(route, body) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(TOKEN ? { 'X-Totem-Token': TOKEN } : {})
+        ...(agentToken() ? { 'X-Totem-Token': agentToken() } : {})
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(8000)
@@ -47,7 +52,7 @@ async function request(route, body) {
   }
   if (response.status === 401 || response.status === 403) {
     throw new Error('API recusou o acesso (HTTP ' + response.status +
-      '). Verifique HERNANDES_TOTEM_API_TOKEN no computador e a chave do servidor.');
+      '). Confira o token em Admin → Conexao com API e no servidor.');
   }
   if (!response.ok) throw new Error('A API retornou HTTP ' + response.status +
     ' ao consultar ' + route + '. Confira os logs do HernandesDash.');
@@ -109,6 +114,9 @@ async function complete(jobId, success, error = '') {
   });
 }
 async function orderHistory(search = '', offset = 0) {
+  if (!agentToken()) {
+    throw new Error('Token da API ausente. Abra Admin → Conexao com API e configure uma vez.');
+  }
   const response = await request('/printer/history', {
     device_id: DEVICE,
     search: String(search || '').trim().slice(0, 80),
@@ -118,6 +126,9 @@ async function orderHistory(search = '', offset = 0) {
 }
 
 async function requestReprint(orderId) {
+  if (!agentToken()) {
+    throw new Error('Token da API ausente. Abra Admin → Conexao com API.');
+  }
   return request('/printer/reprint', {
     device_id: DEVICE,
     order_id: String(orderId || '')
@@ -126,5 +137,5 @@ async function requestReprint(orderId) {
 
 module.exports = {
   DEVICE, BASE, sendEvent, flush, claim, complete,
-  orderHistory, requestReprint, explainApiError
+  orderHistory, requestReprint, explainApiError, agentToken
 };
