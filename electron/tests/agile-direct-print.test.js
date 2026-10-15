@@ -1,113 +1,178 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+const fs = require('node:fs');
+const path = require('node:path');
 const printer = require('../printer');
 const agile = require('../agile');
 const storage = require('../storage');
 const history = require('../agile-history');
-const { receipt, AgilePrintWorker } = require('../agile-print');
+const { receipt, AgilePrintWorker, printOrder, matchCheckout } = require('../agile-print');
 
-function order(id) {
+function order(id, overrides = {}) {
   return {
     agile_id:id,erp_order:'',transaction:'T-' + id,
-    amount:'25.50', status:'aprovado',source:'pedidos',created_at:'2026-10-15'
+    amount:'25.50',status:'recebido',source:'pedidos',
+    created_at:new Date().toISOString(),cancelled:false,...overrides
   };
 }
 
-test('Agile receipt distinguishes Agile order from missing WinThor NUMPED and preserves decimal values', () => {
-  const text = receipt(order('A-123'), [{
+test('receipt marks Agile order correctly even before WinThor exists', () => {
+  const out = receipt(order('A-123'), [{
     product_id:'4702',product_name:'Ketchup',quantity:'2',price:'10.00',value:'20.00'
   }]);
-  assert.match(text, /PEDIDO AGILE: A-123/);
-  assert.match(text, /WINTHOR: AGUARDANDO INTEGRACAO/);
-  assert.match(text, /TRANSACAO: T-A-123/);
-  assert.match(text, /R\$ 10,00/);
-  assert.match(text, /R\$ 25,50/);
-  assert.doesNotMatch(text, /NUMPED WINTHOR: A-123/);
+  assert.match(out, /PEDIDO AGILE: A-123/);
+  assert.match(out, /WINTHOR: AGUARDANDO INTEGRACAO/);
+  assert.match(out, /TRANSACAO: T-A-123/);
+  assert.match(out, /R\$ 10,00/);
+  assert.doesNotMatch(out, /NUMPED WINTHOR: A-123/);
   assert.throws(() => receipt(order('A-123'), []), /produtos/);
 });
 
-test('Agile direct worker ignores older, cancelled and uncertain ERP orders', async () => {
-  const orig = {
+test('Agile "recebido" is printable before invoicing; uncertain or cancelled stays blocked', () => {
+  assert.equal(agile.printEligibility(order('RECEIVED')), true);
+  assert.equal(agile.printEligibility(order('RECEIVED-2', {
+    status:'em_separacao',status_agile:'pedido recebido',status_erp:'em_separacao'
+  })), true);
+  assert.equal(agile.printEligibility(order('SPLIT',{status:'em_separacao'})), false);
+  assert.equal(agile.printEligibility(order('CANCEL',{status:'recebido',cancelled:true})), false);
+  assert.equal(agile.printEligibility(order('CANCEL2',{status:'cancelado',status_erp:'recebido'})), false);
+  assert.equal(agile.printEligibility(order('PENDING',{status:'pendente'})), false);
+});
+
+test('checkout correlation never prints random orders sharing customer 12678', () => {
+  const at = new Date().toISOString();
+  const target = order('T-1',{erp_order:'996655'});
+  const unrelated = order('T-2',{amount:'87.00'});
+  assert.equal(matchCheckout([target,unrelated],{hint:'996655',at}).order.agile_id,'T-1');
+  assert.equal(matchCheckout([target,unrelated],{amount:'25.50',at}).order.agile_id,'T-1');
+  assert.ok(matchCheckout([target,order('T-3')],{amount:'25.50',at}).reason.includes('varios'));
+  assert.equal(matchCheckout([target],{at}).order,undefined);
+  assert.equal(matchCheckout([target],{hint:'UNKNOWN',at}).order,undefined);
+  assert.equal(matchCheckout([target],{amount:'25.50',at:'2026-01-01T00:00:00Z'}).order,undefined);
+});
+
+test('worker prints only checkout-correlated received sale, once, then clears durable pending state', async () => {
+  const original = {
     configured:agile.configured, list:agile.list, items:agile.itemsForOrder,
     selected:storage.selectedPrinter, printers:printer.installedPrinters,
-    print:printer.printReceipt, get:history.get, update:history.update
+    print:printer.printReceipt, get:history.get, update:history.update,
+    pending:history.pendingCheckout, save:history.setPendingCheckout,
+    clear:history.clearPendingCheckout
   };
   const records = new Map();
-  const written = [];
-  let polls = 0;
+  let pending = null;
+  const outputs = [];
+  const events = [];
+  const old = order('PREVIOUS',{amount:'18.00'});
+  const current = order('NEW-SALE',{erp_order:'765432',status:'recebido'});
   try {
     agile.configured = () => true;
     storage.selectedPrinter = () => 'ELGIN i8 TEST';
-    printer.installedPrinters = async () => [{ name:'ELGIN i8 TEST' }];
+    printer.installedPrinters = async () => [{name:'ELGIN i8 TEST'}];
     agile.itemsForOrder = async () => [{
       product_id:'4702',product_name:'Ketchup',quantity:'2',
       price:'12.75',value:'25.50'
     }];
-    printer.printReceipt = async (_name, output) => { written.push(output); };
+    printer.printReceipt = async (_name, text) => {outputs.push(text);};
     history.get = id => records.get(id) || null;
-    history.update = (record, options = {}) => {
-      const previous = records.get(record.agile_id) || {};
-      const updated = { ...previous, ...record, ...options };
-      records.set(record.agile_id, updated);
+    history.update = (data, changes = {}) => {
+      const old = records.get(data.agile_id) || {};
+      const updated = {...old,...data,...changes};
+      records.set(data.agile_id,updated);
       return updated;
     };
-    agile.list = async (resource, filters) => {
-      assert.equal(resource, 'erp_pedidos');
-      assert.equal(filters.codigo_cliente_erp, '12678');
-      polls++;
-      const ids = polls === 1
-        ? ['OLD']
-        : ['NEW', 'OLD', 'CANCEL', 'UNCERTAIN'];
-      return { data:ids.map(id => ({
-        id:'ERP-' + id, id_pedido_erp:id, codigo_cliente_erp:'12678',
-        status_erp:id === 'UNCERTAIN' || id === 'CANCEL'
-          ? 'em_separacao' : 'confirmado',
-        data_cancelamento:id === 'CANCEL' ? '2026-10-15T10:10:00' : null,
-        valor_total:'25.50'
-      })) };
-    };
-    const worker = new AgilePrintWorker({});
+    history.pendingCheckout = () => pending;
+    history.setPendingCheckout = data => {pending = data;return data;};
+    history.clearPendingCheckout = () => {pending = null;};
+    agile.list = async () => ({
+      data:[old,current].map(x => ({
+        id:x.agile_id,id_pedido_erp:x.erp_order,
+        codigo_cliente_erp:'12678',status_erp:x.status,
+        valor_total:x.amount,data_pedido:x.created_at
+      }))
+    });
+    const worker = new AgilePrintWorker({}, {
+      onStatus:e => events.push(e),
+      onPrinted:e => events.push({...e, printed:true})
+    });
+    // Startup/idle must NOT print earlier orders.
     await worker.tick();
-    assert.equal(records.get('ERP-OLD').print_status, 'historical');
-    assert.equal(written.length, 0);
+    assert.equal(outputs.length,0);
+    history.setPendingCheckout({
+      hint:'765432',amount:25.50,at:new Date().toISOString(),session:'S1'
+    });
     await worker.tick();
-    assert.equal(written.length, 1);
-    assert.equal(records.get('ERP-NEW').print_count, 1);
-    assert.equal(records.get('ERP-CANCEL').print_status, 'cancelled');
-    assert.equal(records.get('ERP-UNCERTAIN').print_status, 'awaiting_verification');
+    assert.equal(outputs.length,1);
+    assert.match(outputs[0], /PEDIDO AGILE: NEW-SALE/);
+    assert.equal(records.get('NEW-SALE').print_count,1);
+    assert.equal(pending,null);
+    assert.equal(events.filter(x=>x.printed).length,1);
     await worker.tick();
-    assert.equal(written.length, 1);
+    assert.equal(outputs.length,1);
   } finally {
-    agile.configured = orig.configured;
-    agile.list = orig.list;
-    agile.itemsForOrder = orig.items;
-    storage.selectedPrinter = orig.selected;
-    printer.installedPrinters = orig.printers;
-    printer.printReceipt = orig.print;
-    history.get = orig.get;
-    history.update = orig.update;
+    agile.configured=original.configured;agile.list=original.list;
+    agile.itemsForOrder=original.items;storage.selectedPrinter=original.selected;
+    printer.installedPrinters=original.printers;printer.printReceipt=original.print;
+    history.get=original.get;history.update=original.update;
+    history.pendingCheckout=original.pending;history.setPendingCheckout=original.save;
+    history.clearPendingCheckout=original.clear;
   }
 });
 
-test('Unverified or cancelled Agile orders cannot enter the thermal printer', async () => {
-  const { printOrder } = require('../agile-print');
-  await assert.rejects(
-    printOrder({ agile_id:'CANCEL',status:'em_separacao', cancelled:true }, {}),
-    /cancelado/
-  );
-  await assert.rejects(
-    printOrder({ agile_id:'UNCERTAIN',status:'em_separacao', cancelled:false }, {}),
-    /nao confirmado/
-  );
+test('printer failure does not release checkout or delete the pending job', async () => {
+  const original = {
+    configured:agile.configured,list:agile.list,items:agile.itemsForOrder,
+    selected:storage.selectedPrinter,printers:printer.installedPrinters,
+    print:printer.printReceipt,get:history.get,update:history.update,
+    pending:history.pendingCheckout,clear:history.clearPendingCheckout
+  };
+  let pending = {hint:'NEW',amount:25.5,at:new Date().toISOString(),session:'S2'};
+  let printed = false;
+  try {
+    agile.configured=()=>true;storage.selectedPrinter=()=> 'ELGIN';
+    printer.installedPrinters=async()=>[{name:'ELGIN'}];
+    agile.itemsForOrder=async()=>[{product_id:'4702',product_name:'Ketchup',quantity:'1',price:'25.50'}];
+    printer.printReceipt=async()=>{throw new Error('Printer unplugged');};
+    history.pendingCheckout=()=>pending;
+    history.clearPendingCheckout=()=>{pending=null;};
+    history.get=()=>null;history.update=(o)=>o;
+    agile.list=async()=>({data:[{
+      id:'NEW',codigo_cliente_erp:'12678',status_erp:'recebido',
+      data_pedido:new Date().toISOString(),valor_total:'25.50'
+    }]});
+    const worker=new AgilePrintWorker({}, {onPrinted:()=>{printed=true;}});
+    await worker.tick();
+    assert.ok(pending);
+    assert.equal(printed,false);
+  } finally {
+    agile.configured=original.configured;agile.list=original.list;
+    agile.itemsForOrder=original.items;storage.selectedPrinter=original.selected;
+    printer.installedPrinters=original.printers;printer.printReceipt=original.print;
+    history.get=original.get;history.update=original.update;
+    history.pendingCheckout=original.pending;history.clearPendingCheckout=original.clear;
+  }
 });
 
-test('direct Agile worker has 45 second timer and no automatic Hernandes API calls', () => {
-  const fs=require('node:fs');const path=require('node:path');
+test('thank-you screen stays locked until native print acknowledgment then reloads HOME', () => {
+  const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');
+  const web=fs.readFileSync(path.join(__dirname,'..','shell','renderer.js'),'utf8');
+  const flow=fs.readFileSync(path.join(__dirname,'..','..','src','HernandesCheckout','Resources','checkout_flow.js'),'utf8');
+  assert.match(main,/if \(screen === 'complete' && !receiptConfirmed\)/);
+  assert.match(main,/onPrinted: result =>/);
+  assert.match(main,/await site\.webContents\.loadURL\(HOME\)/);
+  assert.match(main,/worker\.beginCheckout\(/);
+  assert.match(main,/case 'checkout:retry-print'/);
+  assert.match(web,/new-session'\)\.disabled = !printed/);
+  assert.match(web,/checkout-print-retry/);
+  assert.match(flow,/action: 'completion-lock',\s*order:/);
+});
+
+test('old 45-second background loop and automated historic sales printing are removed', () => {
   const main=fs.readFileSync(path.join(__dirname,'..','main.js'),'utf8');
   const worker=fs.readFileSync(path.join(__dirname,'..','agile-print.js'),'utf8');
-  assert.match(worker, /setInterval\(\(\) => void this\.tick\(\), 45000\)/);
-  assert.match(main, /new agilePrint\.AgilePrintWorker/);
-  assert.doesNotMatch(main, /api\.sendEvent\(/);
-  assert.doesNotMatch(worker, /\.\/api|\/printer\/claim/);
+  assert.match(worker,/setInterval\(\(\) => void this\.tick\(\), 12000\)/);
+  assert.match(main,/new agilePrint\.AgilePrintWorker/);
+  assert.doesNotMatch(main,/api\.sendEvent\(/);
+  assert.doesNotMatch(worker,/\/printer\/claim|new PrintWorker/);
 });
