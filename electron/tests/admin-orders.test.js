@@ -8,22 +8,24 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('local kiosk admin exposes orders only after successful admin login', () => {
+test('admin searches directly in Agile and reprints from local storage only', () => {
   const main = read('main.js');
   assert.match(main, /case 'admin:orders':\s*\{\s*if \(screen !== 'printers'\)/);
   assert.match(main, /case 'admin:reprint':\s*\{\s*if \(screen !== 'printers'\)/);
-  assert.match(main, /const chosen = storage\.selectedPrinter\(\)/);
-  assert.match(main, /api\.orderHistory\(payload\?\.search, payload\?\.offset\)/);
-  assert.match(main, /api\.requestReprint\(payload\?\.orderId\)/);
-  assert.match(main, /if \(worker\) void worker\.tick\(\)/);
+  assert.match(main, /agile\.list\('pedidos', \{\}, 1, 25\)/);
+  assert.match(main, /agileHistory\.history\(/);
+  assert.match(main, /agilePrint\.printOrder\(record, site\.webContents, \{ reprint:true \}\)/);
+  assert.match(main, /new agilePrint\.AgilePrintWorker\(site\.webContents\)/);
+  assert.doesNotMatch(main, /new printer\.PrintWorker\(site\.webContents\)/);
+  assert.doesNotMatch(main, /api\.sendEvent\(/);
 });
 
-test('history and reprint use exact device-bound backend paths', () => {
-  const api = read('api.js');
-  assert.match(api, /request\('\/printer\/history'/);
-  assert.match(api, /request\('\/printer\/reprint'/);
-  assert.match(api, /device_id: DEVICE/);
-  assert.match(api, /order_id: String\(orderId \|\| ''\)/);
+test('history comes from Agile local ledger, not HernandesDash HTTP paths', () => {
+  const store = read('agile-history.js');
+  const agile = read('agile.js');
+  assert.match(store, /agile-print-history\.json/);
+  assert.match(agile, /'erp_pedidos_produtos'/);
+  assert.match(agile, /codigo_cliente_erp/);
 });
 
 test('touch admin offers deliberate confirmation, search and pagination', () => {
