@@ -256,6 +256,23 @@ $('agile-test').onclick = async () => {
       ' | Status: ' + (order.status || 'sem status');
     panel.appendChild(item);
   }
+  if (result.itemSample) {
+    const title = document.createElement('strong');
+    title.textContent = 'Itens do pedido: ' + (result.itemSample.count || 0) + ' produto(s)';
+    panel.appendChild(title);
+    if (result.itemSample.error) {
+      const line = document.createElement('p');
+      line.textContent = 'Consulta de itens: ' + result.itemSample.error;
+      panel.appendChild(line);
+    }
+    for (const product of (result.itemSample.items || [])) {
+      const line = document.createElement('p');
+      line.textContent = [product.product_id,product.product_name].filter(Boolean).join(' ') +
+        ' | Qtde: ' + (product.quantity || '?') +
+        ' | Total R$ ' + (product.value || product.price || '?');
+      panel.appendChild(line);
+    }
+  }
   panel.hidden = false;
 };
 
