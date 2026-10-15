@@ -219,3 +219,41 @@ corporativa, isso NAO equivale a uma conexao com identidade verificada.
 certificado confiavel ou a CA interna da empresa no cliente/servidor.
 A excecao nao contorna a autenticacao da API: se o token estiver incorreto,
 havera HTTP 401; se nao estiver configurado no backend, HTTP 503.
+
+### Agile no painel administrativo (Client ID e Client Secret)
+
+Abra **⚙ > Administração > Integração Agile**. Informe `Client ID`
+e `Client Secret` obtidos no painel de aplicativos Agile e clique
+**Salvar credenciais do Agile**. Os valores ficam cifrados no Windows,
+na pasta privada do aplicativo, usando DPAPI. Nenhuma chave do Agile e
+gravada no repositorio nem integrada ao navegador publico de compras.
+O campo de token do HernandesDash e **outro acesso**, com finalidade
+diferente.
+
+**Testar Agile** autentica em `POST /api/usuario/login` e consulta
+`GET /api/integracao/pedidos?page=1&limit=10` (somente leitura).
+A resposta mostra apenas identificadores encontrados do cliente `12678`,
+quando o recurso expuser esse codigo, e a lista de nomes dos campos
+do primeiro registro. Outros compradores nao sao exibidos.
+
+**ATENCAO:** conseguir consultar o Agile NAO significa que a impressao
+pelo Agile ja esteja ativada. Precisamos homologar os identificadores,
+o status de venda e a relacao entre numero Agile e NUMPED WinThor
+antes de alimentar a fila de cupons, que permanece com validacao ERP.
+
+### HTTP 429 e HTTPS interno
+
+O app aplica cooldown e respeita `Retry-After` quando a API do
+HernandesDash retorna 429, evitando consultas repetidas a cada 6 s.
+O proxy nginx do HernandesDash na branch `docker` recebeu uma zona
+dedicada para rotas `/api/ecommerce/totem/`; esta alteracao requer
+**atualizar/recriar o container proxy no servidor**.
+
+A pedido da homologacao na rede corporativa, o modo de certificado
+interno e **ativado inicialmente por padrao**, exclusivamente para
+`hernandesvpn.dyndns.org:3000` e rotas `/api/ecommerce/totem/`.
+Ele nao afeta a API Agile, o navegador ecommerce ou outros hosts.
+A verificacao da identidade do servidor fica enfraquecida nesse modo,
+mesmo numa rede local; para producao, prefira certificado de CA
+confiavel ou cadeia interna instalada no Windows.
+O administrador pode desligar o modo em **Conexao com API**.
