@@ -28,6 +28,8 @@ function receipt(order, items) {
     '='.repeat(width),
     'PEDIDO AGILE: ' + line(order.agile_id),
   ];
+  if (order.external_order_id && order.external_order_id !== order.agile_id)
+    lines.push('REFERENCIA SITE: ' + line(order.external_order_id));
   if (order.erp_order) lines.push('NUMPED WINTHOR: ' + line(order.erp_order));
   else lines.push('WINTHOR: AGUARDANDO INTEGRACAO');
   if (order.transaction) lines.push('TRANSACAO: ' + line(order.transaction));
@@ -86,7 +88,7 @@ function matchCheckout(orders, pending) {
   const hint = String(pending?.hint || '').trim();
   if (hint) {
     const matched = orders.filter(order => order).filter(order =>
-      [order.agile_id, order.erp_order, order.transaction]
+      [order.agile_id, order.external_order_id, order.erp_order, order.transaction]
         .some(id => String(id || '') === hint)
     );
     return matched.length === 1
