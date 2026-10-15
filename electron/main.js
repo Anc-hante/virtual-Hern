@@ -529,8 +529,8 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       const id = String(payload?.orderId || '').trim();
       const record = agileHistory.get(id);
       if (!record) return { ok:false, error:'Pedido nao encontrado no historico Agile deste totem.' };
-      if (record.cancelled || !record.print_eligible || record.print_count < 1) {
-        return { ok:false, error:'Reimpressao bloqueada: pedido cancelado, ainda nao confirmado ou sem primeira via.' };
+      if (record.cancelled || !record.print_eligible) {
+        return { ok:false, error:'Impressao bloqueada: pedido cancelado ou rascunho.' };
       }
       if (worker?.busy) return { ok:false, error:'Impressora ocupada. Aguarde o pedido atual.' };
       if (worker) worker.busy = true;
@@ -547,7 +547,7 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
         }
         agileHistory.update(fresh, fresh.cancelled ? { print_status:'cancelled' } : {});
         if (!agile.printEligibility(fresh)) {
-          return { ok:false, error:'Agile indica cancelamento ou status nao confirmado. Reimpressao bloqueada.' };
+          return { ok:false, error:'Agile indica cancelamento ou rascunho. Impressao bloqueada.' };
         }
         const result = await agilePrint.printOrder(fresh, site.webContents, { reprint:true });
         return { ok:true, message:result.printed
