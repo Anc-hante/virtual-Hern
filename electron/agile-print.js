@@ -107,8 +107,12 @@ class AgilePrintWorker {
         // installed or when credentials are entered for the first time.
         for (const order of current) {
           const seen = ledger.get(order.agile_id);
-          if (!seen || seen.print_status === 'available') {
+          if (isCancelled(order)) {
+            ledger.update(order, { print_status:'cancelled' });
+          } else if (!seen || ['available', 'awaiting_verification'].includes(seen.print_status)) {
             ledger.update(order, { print_status:'historical' });
+          } else {
+            ledger.update(order); // Refresh cancellation and status evidence.
           }
         }
         this.initialized = true;
