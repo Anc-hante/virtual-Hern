@@ -15,7 +15,7 @@ test('admin searches directly in Agile and reprints from local storage only', ()
   assert.match(main, /agile\.list\('erp_pedidos',/);
   assert.match(main, /agileHistory\.history\(/);
   assert.match(main, /agilePrint\.printOrder\(fresh, site\.webContents, \{ reprint:true \}\)/);
-  assert.match(main, /new agilePrint\.AgilePrintWorker\(site\.webContents\)/);
+  assert.match(main, /new agilePrint\.AgilePrintWorker\(site\.webContents,\s*\{/);
   assert.doesNotMatch(main, /new printer\.PrintWorker\(site\.webContents\)/);
   assert.doesNotMatch(main, /api\.sendEvent\(/);
 });
