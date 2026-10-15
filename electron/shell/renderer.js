@@ -97,7 +97,7 @@ function display(state) {
     $('login-error').textContent = '';
   }
   if (next === 'printers' && previous !== 'printers') {
-    for (const tab of ['printer', 'orders', 'api']) {
+    for (const tab of ['printer', 'orders', 'api', 'agile']) {
       const active = tab === 'printer';
       $('admin-' + tab + '-panel').hidden = !active;
       $('admin-tab-' + tab).classList.toggle('selected', active);
@@ -166,7 +166,7 @@ function orderMessage(message, error = false) {
   el.style.color = error ? '#a7191f' : '#526477';
 }
 function adminTab(name) {
-  for (const tab of ['printer', 'orders', 'api']) {
+  for (const tab of ['printer', 'orders', 'api', 'agile']) {
     const active = name === tab;
     $('admin-' + tab + '-panel').hidden = !active;
     $('admin-tab-' + tab).classList.toggle('selected', active);
@@ -175,10 +175,87 @@ function adminTab(name) {
   window.__hernandesHideKeyboard?.();
   if (name === 'orders') void loadOrders(0);
   if (name === 'api') void loadApiStatus();
+  if (name === 'agile') void loadAgileStatus();
 }
 $('admin-tab-printer').onclick = () => adminTab('printer');
 $('admin-tab-orders').onclick = () => adminTab('orders');
 $('admin-tab-api').onclick = () => adminTab('api');
+$('admin-tab-agile').onclick = () => adminTab('agile');
+
+
+let agileBusy = false;
+function agileMessage(message, error = false) {
+  const element = $('agile-message');
+  element.textContent = message;
+  element.style.color = error ? '#a7191f' : '#526477';
+}
+async function loadAgileStatus() {
+  const result = await invoke('admin:agile-status');
+  if (current !== 'printers') return;
+  $('agile-status').textContent = result.ok
+    ? (result.configured ? 'Credenciais Agile configuradas' : 'Agile ainda não configurado')
+    : 'Não foi possível ler a configuração Agile';
+  if (!result.ok) agileMessage(result.error || 'Falha na configuração.', true);
+}
+$('agile-save').onclick = async () => {
+  if (agileBusy) return;
+  const clientId = $('agile-client-id').value.trim();
+  const clientSecret = $('agile-client-secret').value.trim();
+  if (!clientId || !clientSecret) {
+    agileMessage('Preencha os dois campos: Client ID e Client Secret.', true);
+    return;
+  }
+  agileBusy = true;
+  $('agile-save').disabled = true;
+  agileMessage('Salvando credenciais com proteção do Windows…');
+  $('agile-client-id').value = '';
+  $('agile-client-secret').value = '';
+  const result = await invoke('admin:agile-save', { clientId, clientSecret });
+  agileBusy = false;
+  $('agile-save').disabled = false;
+  agileMessage(result.message || result.error || 'Falha ao salvar.', !result.ok);
+  await loadAgileStatus();
+};
+$('agile-test').onclick = async () => {
+  if (agileBusy) return;
+  agileBusy = true;
+  $('agile-test').disabled = true;
+  $('agile-test-results').hidden = true;
+  agileMessage('Autenticando e consultando os pedidos Agile…');
+  const result = await invoke('admin:agile-test');
+  agileBusy = false;
+  $('agile-test').disabled = false;
+  if (!result.ok) {
+    agileMessage(result.error || 'Agile indisponível.', true);
+    return;
+  }
+  agileMessage(result.message || 'Conexão Agile validada.');
+  const panel = $('agile-test-results');
+  panel.replaceChildren();
+  const totals = document.createElement('strong');
+  totals.textContent = 'Pedidos consultados: ' + result.recordsChecked +
+    ' · Do totem (12678): ' + (result.totemOrders || []).length;
+  panel.appendChild(totals);
+  if ((result.totemOrders || []).length) {
+    for (const item of result.totemOrders) {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = 'Agile #' + (item.agile_id || '?') +
+        ' · WinThor: ' + (item.numero_erp || 'pendente') +
+        ' · ' + (item.status || 'sem status');
+      panel.appendChild(paragraph);
+    }
+  } else {
+    const hint = document.createElement('p');
+    hint.textContent = 'Nenhum pedido do cliente 12678 encontrado entre os ' +
+      result.recordsChecked + ' consultados. Verifique as permissões e o filtro.';
+    panel.appendChild(hint);
+  }
+  const fields = document.createElement('p');
+  fields.textContent = 'Campos disponíveis: ' +
+    (result.availableFields || []).join(', ');
+  panel.appendChild(fields);
+  panel.hidden = false;
+};
 
 let apiBusy = false;
 function apiMessage(message, error = false) {
