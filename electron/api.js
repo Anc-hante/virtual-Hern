@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+const https = require('node:https');
 const storage = require('./storage');
 
 const BASE = (
@@ -14,6 +15,66 @@ function agentToken() {
   return stored || process.env.HERNANDES_TOTEM_API_TOKEN || '';
 }
 const DEVICE = storage.loadDeviceId();
+
+const INTERNAL_CERT_BASE = 'https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem';
+
+// This is a deliberate, *off-by-default*, admin-controlled exception for
+// testing the company's own HTTPS proxy with its self-signed certificate.
+// No global NODE_TLS_REJECT_UNAUTHORIZED, Chromium or Agile TLS overrides.
+function canUseInternalCertificate(base = BASE) {
+  return process.platform === 'win32' && base === INTERNAL_CERT_BASE &&
+    storage.allowInternalCertificate() === true;
+}
+
+function postWithInternalCertificate(urlText, headers, body) {
+  const url = new URL(urlText);
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== 'hernandesvpn.dyndns.org' ||
+    url.port !== '3000' ||
+    !url.pathname.startsWith('/api/ecommerce/totem/')
+  ) {
+    return Promise.reject(new Error('Excecao de certificado nao autorizada para este endereco.'));
+  }
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: url.hostname,
+      port: 3000,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers,
+      rejectUnauthorized: false, // Exception ONLY for this explicit host/port.
+      timeout: 8000,
+    }, res => {
+      const chunks = [];
+      let size = 0;
+      res.on('data', chunk => {
+        size += chunk.length;
+        if (size > 1024 * 1024) {
+          req.destroy(new Error('Resposta da API excedeu 1 MB.'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      res.on('error', reject);
+      res.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf8');
+        resolve({
+          status: res.statusCode || 0,
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          json: async () => JSON.parse(raw)
+        });
+      });
+    });
+    req.on('timeout', () => req.destroy(Object.assign(
+      new Error('Tempo esgotado ao consultar a API interna.'),
+      { code: 'ETIMEDOUT' }
+    )));
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
 
 function explainApiError(error) {
   const code = String(error?.cause?.code || error?.code || '');
@@ -38,15 +99,20 @@ function explainApiError(error) {
 async function request(route, body) {
   let response;
   try {
-    response = await fetch(BASE + route, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(agentToken() ? { 'X-Totem-Token': agentToken() } : {})
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(8000)
-    });
+    const token = agentToken();
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'X-Totem-Token': token } : {})
+    };
+    const encodedBody = JSON.stringify(body);
+    response = canUseInternalCertificate()
+      ? await postWithInternalCertificate(BASE + route, headers, encodedBody)
+      : await fetch(BASE + route, {
+          method: 'POST',
+          headers,
+          body: encodedBody,
+          signal: AbortSignal.timeout(8000)
+        });
   } catch (error) {
     throw new Error(explainApiError(error), { cause: error });
   }
@@ -137,5 +203,6 @@ async function requestReprint(orderId) {
 
 module.exports = {
   DEVICE, BASE, sendEvent, flush, claim, complete,
-  orderHistory, requestReprint, explainApiError, agentToken
+  orderHistory, requestReprint, explainApiError, agentToken,
+  canUseInternalCertificate, postWithInternalCertificate
 };
