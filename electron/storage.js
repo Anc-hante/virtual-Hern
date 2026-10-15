@@ -13,6 +13,7 @@ const configFile = path.join(folder, 'printer-settings.json');
 const deviceFile = path.join(folder, 'totem-device-id.txt');
 const queueFile = path.join(folder, 'totem-events-pending.jsonl');
 const leadFile = path.join(folder, 'leads.csv');
+const agentTokenFile = path.join(folder, 'api-token.dpapi');
 
 function ensureFolder() { fs.mkdirSync(folder, { recursive: true }); }
 function loadDeviceId() {
@@ -39,6 +40,38 @@ function savePrinter(name) {
   ensureFolder();
   fs.writeFileSync(configFile, JSON.stringify({ PrinterName: name }, null, 2), 'utf8');
 }
+function windowsProtection() {
+  // Electron safeStorage uses Windows DPAPI; never store plaintext or
+  // silently fall back to insecure encryption on another operating system.
+  const { safeStorage } = require('electron');
+  if (process.platform !== 'win32' || !safeStorage?.isEncryptionAvailable?.()) {
+    throw new Error('A protecao de credenciais do Windows nao esta disponivel.');
+  }
+  return safeStorage;
+}
+function saveAgentToken(value, cryptoProvider = windowsProtection()) {
+  const token = String(value || '').trim();
+  if (token.length < 16 || token.length > 1024 || /[\r\n]/.test(token)) {
+    throw new Error('Informe um token valido de 16 a 1024 caracteres.');
+  }
+  if (!cryptoProvider?.isEncryptionAvailable?.()) {
+    throw new Error('Nao foi possivel criptografar o token no Windows.');
+  }
+  ensureFolder();
+  const encrypted = cryptoProvider.encryptString(token);
+  fs.writeFileSync(agentTokenFile, encrypted, { flag: 'w', mode: 0o600 });
+}
+function loadAgentToken(cryptoProvider = windowsProtection()) {
+  if (!fs.existsSync(agentTokenFile)) return '';
+  if (!cryptoProvider?.isEncryptionAvailable?.()) {
+    throw new Error('O token foi salvo mas o Windows nao permite descriptografa-lo.');
+  }
+  try {
+    return cryptoProvider.decryptString(fs.readFileSync(agentTokenFile));
+  } catch (_error) {
+    throw new Error('Nao foi possivel abrir o token local. Configure novamente no admin.');
+  }
+}
 function recordLead(data) {
   const name = String(data.name || '').trim().slice(0, 120);
   const phone = String(data.phone || '').trim().slice(0, 40);
@@ -50,4 +83,7 @@ function recordLead(data) {
     escape(new Date().toISOString()), escape(name), escape(phone)
   ].join(',') + '\r\n', 'utf8');
 }
-module.exports = { folder, queueFile, ensureFolder, loadDeviceId, selectedPrinter, savePrinter, recordLead };
+module.exports = {
+  folder, queueFile, agentTokenFile, ensureFolder, loadDeviceId,
+  selectedPrinter, savePrinter, recordLead, saveAgentToken, loadAgentToken
+};
