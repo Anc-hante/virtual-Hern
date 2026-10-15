@@ -10,17 +10,47 @@ const BASE = (
 const TOKEN = process.env.HERNANDES_TOTEM_API_TOKEN || '';
 const DEVICE = storage.loadDeviceId();
 
+function explainApiError(error) {
+  const code = String(error?.cause?.code || error?.code || '');
+  if (['DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+    'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED',
+    'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'].includes(code)) {
+    return 'O certificado HTTPS da API não é confiável (' + code +
+      '). Instale um certificado válido no servidor; não desative a validação TLS.';
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return 'O endereço da API não foi encontrado (DNS). Verifique a rede do totem.';
+  }
+  if (code === 'ECONNREFUSED' || code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT') {
+    return 'A conexão à API falhou (' + code + '). Verifique a porta 3000 e o servidor.';
+  }
+  if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+    return 'A API não respondeu em até 8 segundos.';
+  }
+  return 'Não foi possível conectar à API: ' + (code || String(error?.message || 'erro desconhecido'));
+}
+
 async function request(route, body) {
-  const response = await fetch(BASE + route, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(TOKEN ? { 'X-Totem-Token': TOKEN } : {})
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(8000)
-  });
-  if (!response.ok) throw new Error('Totem API HTTP ' + response.status);
+  let response;
+  try {
+    response = await fetch(BASE + route, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(TOKEN ? { 'X-Totem-Token': TOKEN } : {})
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000)
+    });
+  } catch (error) {
+    throw new Error(explainApiError(error), { cause: error });
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('API recusou o acesso (HTTP ' + response.status +
+      '). Verifique HERNANDES_TOTEM_API_TOKEN no computador e a chave do servidor.');
+  }
+  if (!response.ok) throw new Error('A API retornou HTTP ' + response.status +
+    ' ao consultar ' + route + '. Confira os logs do HernandesDash.');
   return response.json();
 }
 
@@ -78,4 +108,4 @@ async function complete(jobId, success, error = '') {
     error: String(error).slice(0, 1800)
   });
 }
-module.exports = { DEVICE, BASE, sendEvent, flush, claim, complete };
+module.exports = { DEVICE, BASE, sendEvent, flush, claim, complete, explainApiError };
