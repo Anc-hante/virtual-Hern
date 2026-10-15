@@ -62,6 +62,7 @@ function postWithInternalCertificate(urlText, headers, body) {
         resolve({
           status: res.statusCode || 0,
           ok: res.statusCode >= 200 && res.statusCode < 300,
+          headers: { get: name => res.headers?.[String(name).toLowerCase()] || null },
           json: async () => JSON.parse(raw)
         });
       });
@@ -96,7 +97,26 @@ function explainApiError(error) {
   return 'Não foi possível conectar à API: ' + (code || String(error?.message || 'erro desconhecido'));
 }
 
+let rateLimitedUntil = 0;
+let consecutiveRateLimits = 0;
+function rateLimitSeconds(response) {
+  const raw = response?.headers?.get?.('retry-after') || '';
+  let seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    const date = Date.parse(raw);
+    seconds = Number.isFinite(date) ? Math.ceil((date - Date.now()) / 1000) : 0;
+  }
+  if (seconds > 0) return Math.max(1, Math.min(300, Math.ceil(seconds)));
+  return Math.min(120, 15 * Math.pow(2, Math.min(consecutiveRateLimits, 3)));
+}
 async function request(route, body) {
+  const cooldown = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
+  if (cooldown > 0) {
+    const err = new Error('API temporariamente limitada (429). Tente novamente em ' +
+      cooldown + ' segundo(s).');
+    err.code = 'RATE_LIMITED';
+    throw err;
+  }
   let response;
   try {
     const token = agentToken();
@@ -116,6 +136,19 @@ async function request(route, body) {
   } catch (error) {
     throw new Error(explainApiError(error), { cause: error });
   }
+  if (response.status === 429) {
+    consecutiveRateLimits += 1;
+    const seconds = rateLimitSeconds(response);
+    rateLimitedUntil = Date.now() + seconds * 1000;
+    const err = new Error(
+      'API retornou 429 (muitas requisicoes). Pausa automatica de ' +
+      seconds + ' segundo(s), sem perder os pedidos na fila.'
+    );
+    err.code = 'RATE_LIMITED';
+    throw err;
+  }
+  consecutiveRateLimits = 0;
+  rateLimitedUntil = 0;
   if (response.status === 401 || response.status === 403) {
     throw new Error('API recusou o acesso (HTTP ' + response.status +
       '). Confira o token em Admin → Conexao com API e no servidor.');
