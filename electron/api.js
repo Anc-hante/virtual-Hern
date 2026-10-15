@@ -18,8 +18,8 @@ const DEVICE = storage.loadDeviceId();
 
 const INTERNAL_CERT_BASE = 'https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem';
 
-// This is a deliberate, *off-by-default*, admin-controlled exception for
-// testing the company's own HTTPS proxy with its self-signed certificate.
+// This corporate test exception is enabled by default at the user's request;
+// the administrator can disable it. It is ONLY for the known proxy and path.
 // No global NODE_TLS_REJECT_UNAUTHORIZED, Chromium or Agile TLS overrides.
 function canUseInternalCertificate(base = BASE) {
   return process.platform === 'win32' && base === INTERNAL_CERT_BASE &&
