@@ -47,7 +47,9 @@
           <strong>🧾 Aguarde seu cupom</strong>
           <p>Por favor, aguarde a impressora terminar de imprimir o cupom antes de retirá-lo.</p>
         </div>
-        <button id="new-session" class="button primary" type="button">Iniciar novo atendimento →</button>
+        <p id="checkout-print-status" role="status" aria-live="polite">Aguardando confirmacao da impressora.</p>
+        <button id="checkout-print-retry" class="button secondary" type="button">Verificar pedido novamente</button>
+        <button id="new-session" class="button primary" type="button" hidden disabled>Iniciar novo atendimento</button>
       </article>
     </section>
 
