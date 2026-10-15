@@ -172,7 +172,7 @@ class AgilePrintWorker {
         throw new Error('Nenhuma impressora salva. Solicite ajuda ao atendente.');
       }
       const response = await agile.list('erp_pedidos',
-        { codigo_cliente_erp:agile.CUSTOMER_CODE }, 1, 25);
+        { codigo_cliente_erp:agile.CUSTOMER_CODE, sort:'data_pedido', order:'DESC' }, 1, 25);
       const orders = response.data.map(row =>
         agile.safeTotemOrder(row, 'erp_pedidos')).filter(Boolean);
       const found = matchCheckout(orders, pending);
