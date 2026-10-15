@@ -237,7 +237,11 @@ function renderOrders(result) {
     const button = document.createElement('button');
     button.className = 'button secondary';
     button.type = 'button';
-    button.textContent = order.reprint_allowed ? '🧾 Reimprimir' : 'Aguardando WinThor';
+    button.textContent = order.reprint_allowed
+      ? '🧾 Reimprimir'
+      : (['pending', 'claimed'].includes(order.print_status)
+        ? 'Em andamento'
+        : 'Aguardando WinThor');
     button.disabled = !order.reprint_allowed;
     button.addEventListener('click', () => showOrderConfirmation(order));
 
