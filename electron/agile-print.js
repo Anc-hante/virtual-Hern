@@ -45,11 +45,14 @@ function receipt(order, items) {
   return lines.join('\n');
 }
 function isCancelled(order) {
-  return /cancel|rejeitad|estornad|excluid/i.test(order.status || '');
+  return !!order?.cancelled || /cancel|rejeitad|estornad|excluid/i.test(order?.status || '');
 }
 async function printOrder(order, contents, { reprint = false } = {}) {
   if (!order || !order.agile_id) throw new Error('Pedido Agile invalido.');
   if (isCancelled(order)) throw new Error('Pedido Agile cancelado ou rejeitado.');
+  if (!agile.printEligibility(order)) {
+    throw new Error('Status ERP nao confirmado para impressao. Pedido bloqueado por seguranca.');
+  }
   const chosen = storage.selectedPrinter() || process.env.HERNANDES_TOTEM_PRINTER_NAME || '';
   if (!chosen) throw new Error('Salve a impressora antes de imprimir.');
   const available = await printer.installedPrinters(contents);
@@ -96,8 +99,9 @@ class AgilePrintWorker {
     this.busy = true;
     try {
       if (!agile.configured() || !storage.selectedPrinter()) return;
-      const records = await agile.list('pedidos', { codcli:agile.CUSTOMER_CODE }, 1, 20);
-      const current = records.data.map(r => agile.safeTotemOrder(r, 'pedidos')).filter(Boolean);
+      const records = await agile.list('erp_pedidos',
+        { codigo_cliente_erp: agile.CUSTOMER_CODE }, 1, 20);
+      const current = records.data.map(r => agile.safeTotemOrder(r, 'erp_pedidos')).filter(Boolean);
       if (!this.initialized) {
         // Do not auto-print all historical orders when the kiosk is first
         // installed or when credentials are entered for the first time.
@@ -112,8 +116,20 @@ class AgilePrintWorker {
       }
       for (const order of current.slice().reverse()) {
         const seen = ledger.get(order.agile_id);
+        if (isCancelled(order)) {
+          ledger.update(order, { print_status:'cancelled' });
+          continue;
+        }
+        if (!agile.printEligibility(order)) {
+          // The API can still show em_separacao after an operator cancels the
+          // order. This status cannot authorize a physical receipt.
+          if (!seen || seen.print_status === 'available') {
+            ledger.update(order, { print_status:'awaiting_verification' });
+          }
+          continue;
+        }
         if (seen?.print_count > 0 || seen?.print_status === 'historical' ||
-            seen?.print_status === 'claimed' || isCancelled(order)) continue;
+            seen?.print_status === 'claimed' || seen?.print_status === 'cancelled') continue;
         try {
           await printOrder(order, this.contents);
         } catch (e) {
