@@ -20,11 +20,15 @@ sem hospedar o navegador dentro do WPF/WebView2.
 - Abre `https://www.grupohernandes.com.br/` em tela cheia.
 - Botões fixos **Voltar**, **Atualizar (manual)**, **Configuração ⚙** e **Reiniciar e-commerce**.
 - Teclado virtual integrado ao Chromium, com texto, números, símbolos, Shift e Enter.
-- Antes de adicionar o primeiro produto, solicita a identificação do cliente e, quando
-  necessário, nome e telefone; registra os dados no HernandesDash e guarda CSV de segurança.
+- Antes de adicionar o primeiro produto, solicita identificação do cliente e,
+  quando necessário, nome e telefone. Mantém um CSV local de contingência.
 - Tela de compra concluída com agradecimento, confetes e aviso para aguardar a impressão.
-- Recupera sessões e transmite eventos ao HernandesDash; falhas de envio ficam em fila local.
-- Consulta a fila de cupons do HernandesDash e imprime na impressora configurada.
+- Consulta a **API Agile diretamente a cada 10 segundos** (com espera em HTTP 429),
+  identifica pedidos do cliente 12678 e imprime o comprovante não fiscal na ELGIN i8.
+- Aceita o identificador/transação Agile quando o NUMPED WinThor ainda não existe.
+  Pedidos cancelados/rascunhos não são impressos; a primeira leitura não imprime
+  automaticamente pedidos históricos.
+- Mantém histórico local para impedir impressões duplicadas e permitir reimpressão no admin.
 - Permite impressão de teste e seleção de impressora após autenticação administrativa.
 - **Não faz reset por inatividade** e **não atualiza a página por timer**.
 
@@ -64,7 +68,9 @@ continuam normais. O aplicativo **não faz recargas automáticas**. O botão
 **Atualizar** recarrega somente quando alguém tocar nele.
 
 **Reiniciar e-commerce** encerra o atendimento manualmente e tenta limpar o carrinho.
-Após uma compra, a tela final permanece até tocar **Iniciar novo atendimento**.
+Após a impressão enviada ao spooler Windows, o totem retorna à página inicial
+para novo atendimento. Se a impressão ainda não foi enviada, mantém a tela final
+com diagnóstico e opção de verificar novamente.
 O carrinho permanece sujeito à disponibilidade/funcionamento do próprio site e
 não há garantia de limpeza se o e-commerce não disponibilizar a operação.
 
