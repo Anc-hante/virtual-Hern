@@ -197,3 +197,25 @@ Esta configuracao se refere a **autenticacao entre Electron e HernandesDash**.
 A integracao Agile (client_id/client_secret) pertence apenas ao backend e
 continua separada, com credenciais privadas. Nao coloque as chaves do
 Agile no app Electron.
+
+### Servidor corporativo com certificado HTTPS autoassinado (homologacao)
+
+Por padrao, o aplicativo valida o certificado da API. Se o Nginx interno
+`hernandesvpn.dyndns.org:3000` usa certificado autoassinado durante o
+teste na rede da empresa, abra **Admin > Conexao com API** e marque
+**Permitir o certificado atual do servidor Hernandes sem validacao de
+autoridade certificadora**; clique em **Aplicar modo HTTPS interno** e
+depois **Testar conexao**.
+
+A excecao e **desligada por padrao** e **somente** vale para
+`https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem/`.
+Nao altera a validacao TLS do ecommerce, Agile, outros hosts ou Chromium.
+Nao usa `NODE_TLS_REJECT_UNAUTHORIZED=0`. Os tokens continuam
+criptografados no Windows (DPAPI) mas podem ser interceptados se alguem
+se passar pelo servidor enquanto a excecao estiver ativa. Mesmo numa rede
+corporativa, isso NAO equivale a uma conexao com identidade verificada.
+
+**Desative depois dos testes.** Para producao permanente, instale um
+certificado confiavel ou a CA interna da empresa no cliente/servidor.
+A excecao nao contorna a autenticacao da API: se o token estiver incorreto,
+havera HTTP 401; se nao estiver configurado no backend, HTTP 503.
