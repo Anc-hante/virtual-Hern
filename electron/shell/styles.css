@@ -78,3 +78,42 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .receipt-paper img{image-rendering:pixelated;width:172px;height:172px;margin:16px 0 8px}
 .receipt-paper strong{font-size:11px;text-align:center}
 .receipt-paper span{font-size:10px;text-align:center}
+
+/* Local admin: printer and order history */
+.printers{max-width:980px;max-height:calc(100vh - 95px);overflow:auto}
+.admin-tabs{display:flex;gap:8px;margin:20px 0;border-bottom:1px solid #e5e7eb;padding-bottom:10px}
+.admin-tab{min-height:45px;border:1px solid #dfe2e8;border-radius:10px;background:#f9fafb;padding:10px 18px;color:#394150;font-weight:750}
+.admin-tab.selected{background:#a7191f;border-color:#a7191f;color:#fff}
+#admin-printer-panel[hidden],#admin-orders-panel[hidden],#orders-confirm[hidden]{display:none!important}
+.orders-toolbar label{display:block;font-size:14px;font-weight:800;color:#313946;margin-bottom:8px}
+.orders-search-row{display:flex;gap:8px}
+.orders-search-row input{height:54px;flex:1;min-width:0;border-radius:11px;border:1px solid #cdd5dd;padding:0 14px;font-size:18px}
+.orders-search-row input:focus{outline:2px solid #a7191f;outline-offset:1px}
+.orders-search-row .button{height:54px}
+.orders-note{font-size:13px!important;color:#687281!important;margin:10px 0!important}
+.orders-list{display:flex;flex-direction:column;gap:10px;min-height:75px}
+.order-row{border:1px solid #e1e4e9;border-radius:14px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff}
+.order-detail{display:flex;flex-direction:column;gap:4px;min-width:0}
+.order-detail strong{font-size:17px;color:#242a32}
+.order-detail small{font-size:13px;color:#666f7c}
+.order-detail .order-total{font-weight:700;color:#252d39}
+.order-status{display:inline-flex;align-self:flex-start;background:#f3f4f6;border-radius:7px;padding:4px 9px;font-weight:750;font-size:12px;color:#505b67}
+.order-status.printed{background:#edf8f0;color:#28673b}
+.order-status.failed{background:#fff3ef;color:#a42d20}
+.order-status.pending{background:#fff9e8;color:#846214}
+.order-row .button{flex-shrink:0;min-width:145px}
+.orders-pagination{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:20px}
+.orders-pagination .button{height:47px}
+#orders-page-label{font-size:13px;color:#555e6b}
+.orders-confirm{margin-top:15px;border:1px solid #eac4c6;border-radius:14px;padding:18px;background:#fff8f8;text-align:left}
+.orders-confirm strong{color:#86151a}
+.orders-confirm p{font-size:14px!important;margin:5px 0!important;color:#444!important}
+.orders-confirm .actions{margin-top:12px}
+@media(max-width:720px){
+ .order-row{flex-direction:column;align-items:stretch}
+ .order-row .button{width:100%}
+ .orders-search-row{flex-wrap:wrap}
+ .orders-search-row input{flex-basis:100%}
+ .orders-search-row .button{flex:1}
+ .orders-pagination{flex-wrap:wrap}
+}
