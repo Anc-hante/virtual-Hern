@@ -121,6 +121,16 @@
             <p class="orders-note">Use o mesmo valor de ECOMMERCE_TOTEM_API_TOKEN configurado no servidor. Não use as credenciais do Agile neste campo.</p>
             <button id="api-save" class="button primary" type="button">Salvar token com proteção do Windows</button>
             <p id="api-message" class="hint" role="status" aria-live="polite"></p>
+            <section class="api-internal-test">
+              <h3>Certificado interno — somente testes na rede da empresa</h3>
+              <label class="api-check-row" for="api-internal-cert-mode">
+                <input id="api-internal-cert-mode" type="checkbox">
+                <span>Permitir o certificado atual do servidor Hernandes sem validação de autoridade certificadora.</span>
+              </label>
+              <p>Exceção restrita a <strong>hernandesvpn.dyndns.org:3000</strong> e às chamadas da API do totem. Não altera o HTTPS do e-commerce ou do Agile. Uma conexão falsa na rede poderá interceptar o token; desative após a homologação.</p>
+              <button id="api-cert-mode-save" class="button secondary" type="button">Aplicar modo HTTPS interno</button>
+              <p id="api-cert-mode-message" class="hint" role="status" aria-live="polite"></p>
+            </section>
           </div>
         </div>
         <div id="admin-orders-panel" hidden>
