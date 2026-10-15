@@ -132,11 +132,13 @@ function isCancelledRecord(row) {
   );
 }
 function printEligibility(order) {
-  if (!order || order.cancelled) return false;
-  // "em_separacao" is NOT positive proof: cancelled orders have been observed
-  // still reporting that ERP status while synchronization catches up.
-  const state = normalizedStatus(order.status);
-  return /(^|[_\s-])(aprovad|confirmad|faturad|liberad|concluid|autorizad)/.test(state);
+  if (!order || order.cancelled || isCancelledRecord(order)) return false;
+  // The confirmed sale exists in Agile as soon as its status is "recebido".
+  // Invoice/WinThor billing is NOT a prerequisite for an order receipt.
+  // Still reject "em_separacao" alone and any cancellation flag/status.
+  return [order.status, order.status_agile, order.status_erp]
+    .some(raw => /(^|[_\\s-])(recebid[oa]?|aprovad[oa]?|confirmad[oa]?|faturad[oa]?|liberad[oa]?|concluid[oa]?|autorizad[oa]?)(?=$|[_\\s-])/
+      .test(normalizedStatus(raw)));
 }
 function safeTotemOrder(row, resource = 'erp_pedidos') {
   if (!row || typeof row !== 'object') return null;
@@ -151,7 +153,9 @@ function safeTotemOrder(row, resource = 'erp_pedidos') {
     agile_id: id || ('erp:' + erpOrder),
     erp_order: erpOrder,
     transaction: text(value(row, ['id_transacao_venda', 'transacao', 'nsu_transacao'])),
-    status: text(value(row, ['status_erp', 'status_operacional', 'status'])),
+    status: text(value(row, ['status', 'status_operacional', 'status_erp'])),
+    status_agile: text(value(row, ['status', 'status_operacional'])),
+    status_erp: text(value(row, ['status_erp'])),
     amount: text(value(row, ['valor_total', 'valor'])),
     created_at: text(value(row, ['data_pedido', 'created_at', 'dt_hr_criacao'])),
     cancellation_date: text(value(row, ['data_cancelamento', 'dt_cancelamento', 'cancelled_at'])),
