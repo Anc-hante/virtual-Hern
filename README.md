@@ -168,7 +168,11 @@ nao tiverem NUMPED confirmado nao podem ser reimpressos.
 dos dois lados, caso ainda nao esteja configurado:
 
 - Backend: `ECOMMERCE_TOTEM_API_TOKEN`
-- Windows / Electron: `HERNANDES_TOTEM_API_TOKEN`
+- Windows / Electron: configure uma vez em **Admin → Conexão com API**. O
+  token fica criptografado com Windows DPAPI em
+  `%LOCALAPPDATA%\\GrupoHernandes\\VirtualHern\\api-token.dpapi`.
+  A variavel `HERNANDES_TOTEM_API_TOKEN` continua disponivel como alternativa
+  para administradores, mas nao e mais necessaria no computador.
 
 Nao coloque esse token no GitHub nem em scripts no ecommerce. Sem o token
 no backend, a consulta administrativa retornara HTTP 503; token incorreto
@@ -177,3 +181,19 @@ retornara HTTP 401. O arquivo `electron/api.js` nao contem credenciais.
 A resposta de reimpressao confirma que a solicitacao entrou na fila de
 impressao, nao que a bobina saiu fisicamente. Evite repetir a solicitacao
 se ela estiver pendente; o aplicativo bloqueia automaticamente duplicidade.
+
+### Ativar a conexao com API sem editar o codigo do Electron
+
+1. No servidor, configure `ECOMMERCE_TOTEM_API_TOKEN` no `backend/repo/.env`.
+   Use um token aleatorio exclusivo (nunca as credenciais do Agile).
+2. Abra o novo EXE. Toque em `⚙`, faca login como admin e abra
+   **Conexao com API**.
+3. Informe o **mesmo token configurado no servidor**. Toque em
+   **Salvar token com protecao do Windows**, depois em **Testar conexao**.
+4. Quando a conexao estiver validada, use a aba **Pedidos anteriores**.
+   O token nao aparece no frontend e nao e incorporado ao EXE nem ao GitHub.
+
+Esta configuracao se refere a **autenticacao entre Electron e HernandesDash**.
+A integracao Agile (client_id/client_secret) pertence apenas ao backend e
+continua separada, com credenciais privadas. Nao coloque as chaves do
+Agile no app Electron.
