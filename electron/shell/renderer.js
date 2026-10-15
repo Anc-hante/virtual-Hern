@@ -97,7 +97,7 @@ function display(state) {
     $('login-error').textContent = '';
   }
   if (next === 'printers' && previous !== 'printers') {
-    for (const tab of ['printer', 'orders', 'api', 'agile']) {
+    for (const tab of ['printer', 'orders', 'agile']) {
       const active = tab === 'printer';
       $('admin-' + tab + '-panel').hidden = !active;
       $('admin-tab-' + tab).classList.toggle('selected', active);
@@ -166,7 +166,7 @@ function orderMessage(message, error = false) {
   el.style.color = error ? '#a7191f' : '#526477';
 }
 function adminTab(name) {
-  for (const tab of ['printer', 'orders', 'api', 'agile']) {
+  for (const tab of ['printer', 'orders', 'agile']) {
     const active = name === tab;
     $('admin-' + tab + '-panel').hidden = !active;
     $('admin-tab-' + tab).classList.toggle('selected', active);
@@ -174,12 +174,12 @@ function adminTab(name) {
   }
   window.__hernandesHideKeyboard?.();
   if (name === 'orders') void loadOrders(0);
-  if (name === 'api') void loadApiStatus();
+
   if (name === 'agile') void loadAgileStatus();
 }
 $('admin-tab-printer').onclick = () => adminTab('printer');
 $('admin-tab-orders').onclick = () => adminTab('orders');
-$('admin-tab-api').onclick = () => adminTab('api');
+// Legacy Hernandes API is no longer needed for Agile order lookup.
 $('admin-tab-agile').onclick = () => adminTab('agile');
 
 
@@ -221,39 +221,41 @@ $('agile-test').onclick = async () => {
   agileBusy = true;
   $('agile-test').disabled = true;
   $('agile-test-results').hidden = true;
-  agileMessage('Autenticando e consultando os pedidos Agile…');
+  agileMessage('Consultando Agile: pedidos, pedidos ERP e produtos…');
   const result = await invoke('admin:agile-test');
   agileBusy = false;
   $('agile-test').disabled = false;
-  if (!result.ok) {
-    agileMessage(result.error || 'Agile indisponível.', true);
-    return;
-  }
-  agileMessage(result.message || 'Conexão Agile validada.');
   const panel = $('agile-test-results');
   panel.replaceChildren();
-  const totals = document.createElement('strong');
-  totals.textContent = 'Pedidos consultados: ' + result.recordsChecked +
-    ' · Do totem (12678): ' + (result.totemOrders || []).length;
-  panel.appendChild(totals);
-  if ((result.totemOrders || []).length) {
-    for (const item of result.totemOrders) {
-      const paragraph = document.createElement('p');
-      paragraph.textContent = 'Agile #' + (item.agile_id || '?') +
-        ' · WinThor: ' + (item.numero_erp || 'pendente') +
-        ' · ' + (item.status || 'sem status');
-      panel.appendChild(paragraph);
-    }
-  } else {
-    const hint = document.createElement('p');
-    hint.textContent = 'Nenhum pedido do cliente 12678 encontrado entre os ' +
-      result.recordsChecked + ' consultados. Verifique as permissões e o filtro.';
-    panel.appendChild(hint);
+  if (!result.sources) {
+    agileMessage(result.error || 'Nao foi possivel autenticar no Agile.', true);
+    return;
   }
-  const fields = document.createElement('p');
-  fields.textContent = 'Campos disponíveis: ' +
-    (result.availableFields || []).join(', ');
-  panel.appendChild(fields);
+  agileMessage(result.message || 'Consulta concluida.', !result.connected);
+  for (const source of result.sources) {
+    const area = document.createElement('div');
+    area.className = 'agile-source';
+    const title = document.createElement('strong');
+    title.textContent = source.resource + ': ' + (source.ok
+      ? (source.checked + ' registros consultados') : 'ERRO');
+    area.appendChild(title);
+    const detail = document.createElement('p');
+    detail.textContent = source.ok
+      ? ('Total informado: ' + (source.total || '?') +
+        ' | Totem 12678: ' + (source.totem_found || 0) +
+        ' | Campos: ' + (source.fields || []).join(', '))
+      : source.error;
+    area.appendChild(detail);
+    panel.appendChild(area);
+  }
+  for (const order of (result.orders || []).slice(0, 10)) {
+    const item = document.createElement('p');
+    item.textContent = 'Agile #' + (order.agile_id || '?') +
+      ' | NUMPED: ' + (order.erp_order || 'nao disponivel') +
+      ' | Transacao: ' + (order.transaction || 'nao disponivel') +
+      ' | Status: ' + (order.status || 'sem status');
+    panel.appendChild(item);
+  }
   panel.hidden = false;
 };
 
@@ -348,7 +350,8 @@ function orderDate(value) {
 function showOrderConfirmation(order) {
   selectedOrder = order;
   $('orders-confirm-number').textContent =
-    'Pedido WinThor ' + (order.order_number || 'sem número');
+    (order.number_type === 'winthor' ? 'Pedido WinThor ' : 'Pedido Agile ') +
+    (order.order_number || 'sem número');
   $('orders-confirm').hidden = false;
   $('orders-confirm').scrollIntoView({ block:'nearest', behavior:'smooth' });
 }
@@ -368,7 +371,8 @@ function renderOrders(result) {
     const detail = document.createElement('div');
     detail.className = 'order-detail';
     const num = document.createElement('strong');
-    num.textContent = 'Pedido WinThor ' + (order.order_number || 'pendente');
+    num.textContent = (order.number_type === 'winthor' ? 'WinThor ' : 'Agile ') +
+      (order.order_number || 'pendente');
     const date = document.createElement('small');
     date.textContent = orderDate(order.occurred_at);
     const amount = document.createElement('small');
@@ -386,9 +390,7 @@ function renderOrders(result) {
     button.type = 'button';
     button.textContent = order.reprint_allowed
       ? '🧾 Reimprimir'
-      : (['pending', 'claimed'].includes(order.print_status)
-        ? 'Em andamento'
-        : 'Aguardando WinThor');
+      : (order.print_status === 'claimed' ? 'Imprimindo' : 'Indisponivel');
     button.disabled = !order.reprint_allowed;
     button.addEventListener('click', () => showOrderConfirmation(order));
 
@@ -420,7 +422,7 @@ async function loadOrders(offset = 0) {
   $('orders-confirm').hidden = true;
   $('orders-search-button').disabled = true;
   $('orders-refresh').disabled = true;
-  orderMessage('Consultando pedidos registrados no HernandesDash…');
+  orderMessage('Consultando diretamente os pedidos no Agile…');
   const result = await invoke('admin:orders', {
     search: $('orders-search').value.trim(),
     offset: orderOffset
@@ -437,7 +439,7 @@ async function loadOrders(offset = 0) {
     return;
   }
   renderOrders(result);
-  orderMessage('Pedidos registrados neste totem. Use Reimprimir para emitir uma nova via.');
+  orderMessage(result.warning ? ('Historico local. Atualizacao Agile: ' + result.warning) : 'Pedidos deste totem consultados diretamente no Agile.', !!result.warning);
 }
 $('orders-search-button').onclick = () => void loadOrders(0);
 $('orders-refresh').onclick = () => void loadOrders(orderOffset);
@@ -462,7 +464,7 @@ $('orders-confirm-button').onclick = async () => {
     return;
   }
   await loadOrders(orderOffset);
-  orderMessage('Nova via colocada na fila da impressora. Aguarde o papel sair.');
+  orderMessage('Cupom enviado ao Windows. Aguarde a impressora concluir.');
 };
 
 $('printer-test').onclick = async () => {
