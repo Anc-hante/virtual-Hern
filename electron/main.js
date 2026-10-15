@@ -313,6 +313,8 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
     }
     case 'admin:agile-test': {
       if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      if (worker?.busy) return { ok:false, error:'Uma consulta Agile ja esta em andamento. Aguarde e tente novamente.' };
+      if (worker) worker.busy = true;
       try {
         const result = await agile.diagnose();
         return { ok: result.connected,
@@ -322,6 +324,8 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
           ...result };
       } catch (e) {
         return { ok: false, error: e.message };
+      } finally {
+        if (worker) worker.busy = false;
       }
     }
     case 'admin:api-status': {
