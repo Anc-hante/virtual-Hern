@@ -91,11 +91,14 @@ function matchCheckout(orders, pending) {
       [order.agile_id, order.external_order_id, order.erp_order, order.transaction]
         .some(id => String(id || '') === hint)
     );
-    return matched.length === 1
-      ? { order:matched[0] }
-      : { reason:matched.length > 1
-        ? 'Mais de um pedido Agile possui este identificador. Consulte o administrador.'
-        : 'Aguardando o numero do pedido aparecer no Agile.' };
+    if (matched.length === 1) return { order:matched[0] };
+    if (matched.length > 1) {
+      return { reason:'Mais de um pedido Agile possui este identificador. Consulte o administrador.' };
+    }
+    // Some storefronts show a site order number different from Agile's
+    // ERP/internal number. Fall back only to a UNIQUE amount+time match.
+    // Never match by just a recent timestamp.
+
   }
 
   // When the popup contains no ID, correlate strictly by amount + time.
@@ -103,7 +106,7 @@ function matchCheckout(orders, pending) {
   const amount = Number(pending?.amount);
   const at = Date.parse(pending?.at || '');
   if (pending?.amount == null || !Number.isFinite(amount) || !Number.isFinite(at)) {
-    return { reason:'A confirmacao nao informou o numero nem o valor do pedido. Necessaria identificacao antes de imprimir.' };
+    return { reason:'A confirmacao ainda nao pode ser vinculada ao pedido Agile. Necessaria identificacao antes de imprimir.' };
   }
   const matched = live.filter(order => {
     const orderAmount = Number(order.amount);
