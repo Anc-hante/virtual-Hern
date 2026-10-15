@@ -150,7 +150,10 @@ async function diagnose() {
   const resources = ['pedidos', 'erp_pedidos', 'erp_pedidos_produtos'];
   for (const resource of resources) {
     try {
-      const response = await list(resource, {}, 1, 12);
+      const filters = resource === 'pedidos' ? { codcli: CUSTOMER_CODE }
+        : resource === 'erp_pedidos' ? { codigo_cliente_erp: CUSTOMER_CODE }
+        : {};
+      const response = await list(resource, filters, 1, 12);
       const fields = Object.keys(response.data[0] || {})
         .filter(k => !/nome|telefone|endereco|cpf|cnpj|email|documento/i.test(k))
         .slice(0, 32);
@@ -168,7 +171,22 @@ async function diagnose() {
       if (/429/.test(error.message)) break; // Do not hammer a throttled API.
     }
   }
-  return { connected:sources.some(s => s.ok), sources, orders:samples };
+  // Fetch items for at most one matched order, to keep API consumption low.
+  let itemSample = { count:0, items:[], error:'' };
+  const candidate = samples.find(order => order.agile_id && order.erp_order) ||
+    samples.find(order => order.agile_id);
+  if (candidate && !sources.some(source => /429/.test(source.error || ''))) {
+    try {
+      const items = await itemsForOrder(candidate);
+      itemSample = {
+        count:items.length, items:items.slice(0, 5),
+        order_id:candidate.agile_id, erp_order:candidate.erp_order
+      };
+    } catch (e) {
+      itemSample = { count:0, items:[], error:e.message };
+    }
+  }
+  return { connected:sources.some(s => s.ok), sources, orders:samples, itemSample };
 }
 // Best effort, filtered server-side. Fallback to an unfiltered small page
 // only when Agile rejects the filter as a 400. Never fetch all clients.
