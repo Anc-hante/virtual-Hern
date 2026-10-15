@@ -73,11 +73,16 @@
         <div class="dialog-title">
           <div>
             <small>CONFIGURAÇÃO DO TOTEM</small>
-            <h1>Escolha a impressora</h1>
-            <p>Selecione uma impressora instalada no Windows. Depois teste e salve.</p>
+            <h1>Painel administrativo</h1>
+            <p>Configure a ELGIN i8 e consulte os pedidos anteriores do totem.</p>
           </div>
           <button id="printer-close" class="close" type="button" aria-label="Fechar">×</button>
         </div>
+        <div class="admin-tabs" role="group" aria-label="Seções do painel">
+          <button id="admin-tab-printer" class="admin-tab selected" type="button" aria-pressed="true">Impressora</button>
+          <button id="admin-tab-orders" class="admin-tab" type="button" aria-pressed="false">Pedidos anteriores</button>
+        </div>
+        <div id="admin-printer-panel">
         <div class="selected">
           <span>Impressora salva</span>
           <strong id="saved-printer">Nenhuma impressora selecionada</strong>
@@ -100,6 +105,33 @@
         <div class="actions">
           <button id="printer-test" class="button secondary" type="button" disabled>🧾 Testar impressão</button>
           <button id="printer-save" class="button primary" type="button" disabled>Salvar impressora</button>
+        </div>
+        </div>
+        <div id="admin-orders-panel" hidden>
+          <div class="orders-toolbar">
+            <label for="orders-search">Número do pedido</label>
+            <div class="orders-search-row">
+              <input id="orders-search" inputmode="numeric" autocomplete="off" placeholder="Buscar pelo pedido WinThor">
+              <button id="orders-search-button" class="button secondary" type="button">Buscar</button>
+              <button id="orders-refresh" class="button secondary" type="button" title="Atualizar pedidos">↻</button>
+            </div>
+          </div>
+          <p class="orders-note">Pedidos registrados deste totem. A reimpressão usa a impressora salva e o mesmo cupom com QR Code.</p>
+          <p id="orders-message" class="hint" role="status" aria-live="polite"></p>
+          <div id="orders-list" class="orders-list" aria-live="polite"></div>
+          <div id="orders-confirm" class="orders-confirm" hidden>
+            <strong id="orders-confirm-number"></strong>
+            <p>Deseja enviar uma nova via deste pedido para a impressora?</p>
+            <div class="actions">
+              <button id="orders-cancel" class="button secondary" type="button">Cancelar</button>
+              <button id="orders-confirm-button" class="button primary" type="button">Confirmar reimpressão</button>
+            </div>
+          </div>
+          <div class="orders-pagination">
+            <button id="orders-prev" class="button secondary" type="button" disabled>← Anteriores</button>
+            <span id="orders-page-label">0 pedidos</span>
+            <button id="orders-next" class="button secondary" type="button" disabled>Próximos →</button>
+          </div>
         </div>
       </article>
     </section>
