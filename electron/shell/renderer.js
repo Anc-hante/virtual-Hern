@@ -231,7 +231,8 @@ $('agile-test').onclick = async () => {
     agileMessage(result.error || 'Nao foi possivel autenticar no Agile.', true);
     return;
   }
-  agileMessage(result.message || 'Consulta concluida.', !result.connected);
+  agileMessage(result.warning ||
+    result.message || 'Consulta concluída.', !result.connected);
   for (const source of result.sources) {
     const area = document.createElement('div');
     area.className = 'agile-source';
@@ -243,6 +244,10 @@ $('agile-test').onclick = async () => {
     detail.textContent = source.ok
       ? ('Total informado: ' + (source.total || '?') +
         ' | Totem 12678: ' + (source.totem_found || 0) +
+        (source.resource === 'erp_pedidos'
+          ? (' | Cancelados: ' + (source.cancelled || 0) +
+            ' | Sem confirmação: ' + (source.awaiting_verification || 0))
+          : '') +
         ' | Campos: ' + (source.fields || []).join(', '))
       : source.error;
     area.appendChild(detail);
@@ -253,7 +258,10 @@ $('agile-test').onclick = async () => {
     item.textContent = 'Agile #' + (order.agile_id || '?') +
       ' | NUMPED: ' + (order.erp_order || 'nao disponivel') +
       ' | Transacao: ' + (order.transaction || 'nao disponivel') +
-      ' | Status: ' + (order.status || 'sem status');
+      ' | Status ERP: ' + (order.status || 'sem status') +
+      (order.cancelled ? ' | CANCELADO - NÃO IMPRIMIR'
+        : !order.print_eligible ? ' | AGUARDANDO CONFIRMAÇÃO - NÃO IMPRIMIR'
+          : ' | Confirmado para impressão');
     panel.appendChild(item);
   }
   if (result.itemSample) {
@@ -349,7 +357,11 @@ function statusLabel(status) {
     printed: 'Enviado à impressora',
     pending: 'Aguardando impressão',
     claimed: 'Em impressão',
-    failed: 'Falha na impressão'
+    failed: 'Falha na impressão',
+    cancelled: 'Pedido cancelado',
+    awaiting_verification: 'Aguardando confirmação no Agile',
+    historical: 'Pedido anterior',
+    available: 'Disponível para conferência'
   })[status] || 'Sem informação';
 }
 function money(value) {
