@@ -55,6 +55,7 @@ function update(order, changes = {}) {
   const old = index >= 0 ? rows.splice(index, 1)[0] : {};
   const safe = {
     agile_id: id,
+    external_order_id: String(order.external_order_id || old.external_order_id || ''),
     erp_order: String(order.erp_order || old.erp_order || ''),
     transaction: String(order.transaction || old.transaction || ''),
     amount: String(order.amount || old.amount || ''),
@@ -77,7 +78,8 @@ function get(id) { return load().find(r => r.agile_id === String(id)) || null; }
 function history(search = '', offset = 0, limit = 25) {
   const rows = load().filter(x =>
     !search || x.agile_id.includes(search) ||
-    x.erp_order.includes(search) || x.transaction.includes(search)
+    x.erp_order.includes(search) || x.transaction.includes(search) ||
+    String(x.external_order_id || '').includes(search)
   ).reverse();
   const start = Math.max(0, Math.floor(Number(offset) || 0));
   return {
