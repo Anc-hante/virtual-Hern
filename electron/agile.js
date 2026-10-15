@@ -133,11 +133,10 @@ function isCancelledRecord(row) {
 }
 function printEligibility(order) {
   if (!order || order.cancelled || isCancelledRecord(order)) return false;
-  // The confirmed sale exists in Agile as soon as its status is "recebido".
-  // Invoice/WinThor billing is NOT a prerequisite for an order receipt.
-  // Still reject "em_separacao" alone and any cancellation flag/status.
+  // A real Agile order becomes printable on "recebido", before ERP invoicing.
+  // Separating and pending states alone are not proof of receipt.
   return [order.status, order.status_agile, order.status_erp]
-    .some(raw => /(^|[_\\s-])(recebid[oa]?|aprovad[oa]?|confirmad[oa]?|faturad[oa]?|liberad[oa]?|concluid[oa]?|autorizad[oa]?)(?=$|[_\\s-])/
+    .some(raw => /(^|[_\s-])(recebid[oa]?|aprovad[oa]?|confirmad[oa]?|faturad[oa]?|liberad[oa]?|concluid[oa]?|autorizad[oa]?)(?=$|[_\s-])/
       .test(normalizedStatus(raw)));
 }
 function safeTotemOrder(row, resource = 'erp_pedidos') {
