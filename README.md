@@ -150,3 +150,30 @@ confirmar a saída física do papel.
 O teclado Electron é acionado pelo `pointerdown` no próprio Chromium, sem
 redimensionar o navegador. O formulário de nome/telefone é deslocado acima
 dele quando necessário.
+
+## Reimpressao de pedidos anteriores no painel do totem
+
+Na engrenagem (area administrativa), entre com o usuario admin e abra
+**Pedidos anteriores**. Pesquise pelo numero do pedido WinThor, veja data,
+valor e status e toque em **Reimprimir**. Sera pedida confirmacao antes de
+colocar o cupom na fila da ELGIN i8. O cupom contem o QR Code de cadastro
+como na impressao original.
+
+As consultas sao paginadas em lotes de 25 pedidos, e mostram somente
+registros do proprio dispositivo existentes no banco do HernandesDash.
+Nao mostra automaticamente todo o historico do WinThor. Pedidos que ainda
+nao tiverem NUMPED confirmado nao podem ser reimpressos.
+
+**Requisito para ativar:** configure o mesmo token no ambiente privado
+dos dois lados, caso ainda nao esteja configurado:
+
+- Backend: `ECOMMERCE_TOTEM_API_TOKEN`
+- Windows / Electron: `HERNANDES_TOTEM_API_TOKEN`
+
+Nao coloque esse token no GitHub nem em scripts no ecommerce. Sem o token
+no backend, a consulta administrativa retornara HTTP 503; token incorreto
+retornara HTTP 401. O arquivo `electron/api.js` nao contem credenciais.
+
+A resposta de reimpressao confirma que a solicitacao entrou na fila de
+impressao, nao que a bobina saiu fisicamente. Evite repetir a solicitacao
+se ela estiver pendente; o aplicativo bloqueia automaticamente duplicidade.
