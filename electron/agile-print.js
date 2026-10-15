@@ -102,7 +102,10 @@ class AgilePrintWorker {
         // Do not auto-print all historical orders when the kiosk is first
         // installed or when credentials are entered for the first time.
         for (const order of current) {
-          if (!ledger.get(order.agile_id)) ledger.update(order, { print_status:'historical' });
+          const seen = ledger.get(order.agile_id);
+          if (!seen || seen.print_status === 'available') {
+            ledger.update(order, { print_status:'historical' });
+          }
         }
         this.initialized = true;
         return;
