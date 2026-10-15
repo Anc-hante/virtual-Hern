@@ -88,7 +88,7 @@ test('checkout correlation never prints random orders sharing customer 12678', (
   assert.equal(matchCheckout([target,unrelated],{
     hint:'SITE-ONLY-ID',amount:'25.50',at
   }).order.agile_id,'T-1');
-  assert.ok(matchCheckout([target,order('T-3')],{amount:'25.50',at}).reason.includes('varios'));
+  assert.equal(matchCheckout([target,order('T-3')],{amount:'25.50',at}).order,undefined);
   // A single sale immediately after the customer confirms on this
   // dedicated totem may be linked even if Agile returns no site number.
   assert.equal(matchCheckout([target],{at}).order.agile_id,'T-1');
