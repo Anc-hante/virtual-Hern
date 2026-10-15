@@ -7,6 +7,33 @@ const storage = require('./storage');
 
 const ledgerFile = path.join(storage.folder, 'agile-print-history.json');
 const MAX_RECORDS = 500;
+const pendingFile = path.join(storage.folder, 'agile-checkout-pending.json');
+function pendingCheckout() {
+  try {
+    const entry = JSON.parse(fs.readFileSync(pendingFile, 'utf8'));
+    return typeof entry?.at === 'string' ? entry : null;
+  } catch (_) { return null; }
+}
+function setPendingCheckout(entry) {
+  const created = {
+    at: String(entry.at || new Date().toISOString()),
+    hint: String(entry.hint || '').slice(0, 80),
+    amount: entry.amount == null ? null : Number(entry.amount),
+    session: String(entry.session || '').slice(0, 90)
+  };
+  if (created.amount !== null && !Number.isFinite(created.amount)) {
+    created.amount = null;
+  }
+  storage.ensureFolder();
+  const tmp = pendingFile + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(created), { flag:'w', mode:0o600 });
+  fs.renameSync(tmp, pendingFile);
+  return created;
+}
+function clearPendingCheckout() {
+  fs.rmSync(pendingFile, { force:true });
+}
+
 
 function load() {
   try {
@@ -70,4 +97,5 @@ function history(search = '', offset = 0, limit = 25) {
     next_offset:start + limit < rows.length ? start + limit : null
   };
 }
-module.exports = { ledgerFile, load, update, get, history };
+module.exports = { ledgerFile, load, update, get, history,
+  pendingFile, pendingCheckout, setPendingCheckout, clearPendingCheckout };
