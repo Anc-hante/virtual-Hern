@@ -67,12 +67,13 @@ test('Agile JWT test validates orders, ERP orders, product fields without return
     };
     agile.resetSession();
     const result = await agile.diagnose();
-    assert.equal(requests.length, 4);
+    assert.equal(requests.length, 5);
     assert.equal(requests[0].url, 'https://api-integracao.agileecommerce.com.br/api/usuario/login');
     assert.equal(requests[0].redirect, 'error');
     assert.equal(requests[1].method, 'GET');
     assert.equal(requests[1].headers.Authorization, 'Bearer JWT-TEST-ONLY');
     assert.equal(result.sources.length, 3);
+    assert.equal(result.itemSample.count, 1);
     assert.equal(result.sources[0].totem_found, 1);
     assert.equal(result.orders[0].agile_id, 'AGILE-1');
     assert.equal(result.orders[0].transaction, 'TX1');
