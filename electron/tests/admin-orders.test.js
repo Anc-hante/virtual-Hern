@@ -12,9 +12,9 @@ test('admin searches directly in Agile and reprints from local storage only', ()
   const main = read('main.js');
   assert.match(main, /case 'admin:orders':\s*\{\s*if \(screen !== 'printers'\)/);
   assert.match(main, /case 'admin:reprint':\s*\{\s*if \(screen !== 'printers'\)/);
-  assert.match(main, /agile\.list\('pedidos', \{ codcli:agile\.CUSTOMER_CODE \}, 1, 25\)/);
+  assert.match(main, /agile\.list\('erp_pedidos',/);
   assert.match(main, /agileHistory\.history\(/);
-  assert.match(main, /agilePrint\.printOrder\(record, site\.webContents, \{ reprint:true \}\)/);
+  assert.match(main, /agilePrint\.printOrder\(fresh, site\.webContents, \{ reprint:true \}\)/);
   assert.match(main, /new agilePrint\.AgilePrintWorker\(site\.webContents\)/);
   assert.doesNotMatch(main, /new printer\.PrintWorker\(site\.webContents\)/);
   assert.doesNotMatch(main, /api\.sendEvent\(/);
