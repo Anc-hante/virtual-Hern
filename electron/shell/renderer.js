@@ -97,12 +97,13 @@ function display(state) {
     $('login-error').textContent = '';
   }
   if (next === 'printers' && previous !== 'printers') {
-    $('admin-printer-panel').hidden = false;
-    $('admin-orders-panel').hidden = true;
-    $('admin-tab-printer').classList.add('selected');
-    $('admin-tab-orders').classList.remove('selected');
-    $('admin-tab-printer').setAttribute('aria-pressed', 'true');
-    $('admin-tab-orders').setAttribute('aria-pressed', 'false');
+    for (const tab of ['printer', 'orders', 'api']) {
+      const active = tab === 'printer';
+      $('admin-' + tab + '-panel').hidden = !active;
+      $('admin-tab-' + tab).classList.toggle('selected', active);
+      $('admin-tab-' + tab).setAttribute('aria-pressed', String(active));
+    }
+    $('api-token-input').value = '';
     $('receipt-preview-panel').hidden = true;
     $('receipt-preview-button').textContent = '👁 Visualizar modelo completo do cupom (80 mm + QR Code)';
     void loadPrinters();
@@ -165,18 +166,68 @@ function orderMessage(message, error = false) {
   el.style.color = error ? '#a7191f' : '#526477';
 }
 function adminTab(name) {
-  const orders = name === 'orders';
-  $('admin-printer-panel').hidden = orders;
-  $('admin-orders-panel').hidden = !orders;
-  $('admin-tab-printer').classList.toggle('selected', !orders);
-  $('admin-tab-orders').classList.toggle('selected', orders);
-  $('admin-tab-printer').setAttribute('aria-pressed', String(!orders));
-  $('admin-tab-orders').setAttribute('aria-pressed', String(orders));
+  for (const tab of ['printer', 'orders', 'api']) {
+    const active = name === tab;
+    $('admin-' + tab + '-panel').hidden = !active;
+    $('admin-tab-' + tab).classList.toggle('selected', active);
+    $('admin-tab-' + tab).setAttribute('aria-pressed', String(active));
+  }
   window.__hernandesHideKeyboard?.();
-  if (orders) void loadOrders(0);
+  if (name === 'orders') void loadOrders(0);
+  if (name === 'api') void loadApiStatus();
 }
 $('admin-tab-printer').onclick = () => adminTab('printer');
 $('admin-tab-orders').onclick = () => adminTab('orders');
+$('admin-tab-api').onclick = () => adminTab('api');
+
+let apiBusy = false;
+function apiMessage(message, error = false) {
+  const area = $('api-message');
+  area.textContent = message;
+  area.style.color = error ? '#a7191f' : '#526477';
+}
+async function loadApiStatus() {
+  const result = await invoke('admin:api-status');
+  if (current !== 'printers') return;
+  if (!result.ok) {
+    $('api-status').textContent = 'Configuração indisponível';
+    apiMessage(result.error || 'Não foi possível verificar a configuração.', true);
+    return;
+  }
+  $('api-status').textContent = result.configured
+    ? 'Token configurado no computador'
+    : 'Token ainda não configurado';
+  apiMessage(result.configured
+    ? 'Para trocar o token, insira um novo valor e toque em Salvar.'
+    : 'Cole o token gerado no servidor do HernandesDash.');
+}
+$('api-save').onclick = async () => {
+  if (apiBusy) return;
+  const token = $('api-token-input').value.trim();
+  if (token.length < 16) {
+    apiMessage('Digite o token completo (mínimo de 16 caracteres).', true);
+    return;
+  }
+  apiBusy = true;
+  $('api-save').disabled = true;
+  $('api-token-input').value = '';
+  apiMessage('Salvando a credencial com proteção do Windows…');
+  const result = await invoke('admin:api-save', { token });
+  $('api-save').disabled = false;
+  apiBusy = false;
+  apiMessage(result.message || result.error || 'Falha ao salvar token.', !result.ok || !result.connected);
+  void loadApiStatus();
+};
+$('api-test').onclick = async () => {
+  if (apiBusy) return;
+  apiBusy = true;
+  $('api-test').disabled = true;
+  apiMessage('Testando acesso ao HernandesDash…');
+  const result = await invoke('admin:api-test');
+  $('api-test').disabled = false;
+  apiBusy = false;
+  apiMessage(result.message || result.error || 'Falha ao conectar.', !result.ok);
+};
 
 function statusLabel(status) {
   return ({
