@@ -81,6 +81,7 @@
         <div class="admin-tabs" role="group" aria-label="Seções do painel">
           <button id="admin-tab-printer" class="admin-tab selected" type="button" aria-pressed="true">Impressora</button>
           <button id="admin-tab-orders" class="admin-tab" type="button" aria-pressed="false">Pedidos anteriores</button>
+          <button id="admin-tab-api" class="admin-tab" type="button" aria-pressed="false">Conexão com API</button>
         </div>
         <div id="admin-printer-panel">
         <div class="selected">
@@ -106,6 +107,21 @@
           <button id="printer-test" class="button secondary" type="button" disabled>🧾 Testar impressão</button>
           <button id="printer-save" class="button primary" type="button" disabled>Salvar impressora</button>
         </div>
+        </div>
+        <div id="admin-api-panel" hidden>
+          <div class="api-setup">
+            <h2>Conexão com HernandesDash</h2>
+            <p>Configure uma única vez o token privado usado para consultar e reimprimir pedidos. Ele fica criptografado no Windows e não aparece no código do aplicativo.</p>
+            <div class="api-status-row">
+              <strong id="api-status">Verificando configuração…</strong>
+              <button id="api-test" class="button secondary" type="button">Testar conexão</button>
+            </div>
+            <label for="api-token-input">Token da API do totem</label>
+            <input id="api-token-input" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Cole aqui o token do servidor" maxlength="1024"/>
+            <p class="orders-note">Use o mesmo valor de ECOMMERCE_TOTEM_API_TOKEN configurado no servidor. Não use as credenciais do Agile neste campo.</p>
+            <button id="api-save" class="button primary" type="button">Salvar token com proteção do Windows</button>
+            <p id="api-message" class="hint" role="status" aria-live="polite"></p>
+          </div>
         </div>
         <div id="admin-orders-panel" hidden>
           <div class="orders-toolbar">
