@@ -18,3 +18,11 @@ node_modules/
 *.log
 *.tmp
 out/
+
+# Agile/Hernandes local-only credentials - never commit secrets
+.env
+.env.*
+!.env.example
+*.dpapi
+agile-print-history.json
+agile-checkout-pending.json
