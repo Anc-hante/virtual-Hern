@@ -143,7 +143,11 @@
     // kiosk thank-you screen.
     post({
       type: 'kiosk',
-      action: 'completion-lock'
+      action: 'completion-lock',
+      order: {
+        order_number: orderData.order_number,
+        amount: orderData.amount
+      }
     });
 
     post({
