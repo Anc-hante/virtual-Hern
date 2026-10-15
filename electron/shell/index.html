@@ -82,6 +82,7 @@
           <button id="admin-tab-printer" class="admin-tab selected" type="button" aria-pressed="true">Impressora</button>
           <button id="admin-tab-orders" class="admin-tab" type="button" aria-pressed="false">Pedidos anteriores</button>
           <button id="admin-tab-api" class="admin-tab" type="button" aria-pressed="false">Conexão com API</button>
+          <button id="admin-tab-agile" class="admin-tab" type="button" aria-pressed="false">Integração Agile</button>
         </div>
         <div id="admin-printer-panel">
         <div class="selected">
@@ -131,6 +132,24 @@
               <button id="api-cert-mode-save" class="button secondary" type="button">Aplicar modo HTTPS interno</button>
               <p id="api-cert-mode-message" class="hint" role="status" aria-live="polite"></p>
             </section>
+          </div>
+        </div>
+        <div id="admin-agile-panel" hidden>
+          <div class="api-setup">
+            <h2>Integração com Agile Ecommerce</h2>
+            <p>Configure o aplicativo Agile para consultar os pedidos do totem, independentemente do WinThor. As credenciais ficam protegidas neste Windows.</p>
+            <div class="api-status-row">
+              <strong id="agile-status">Verificando credenciais…</strong>
+              <button id="agile-test" class="button secondary" type="button">Testar Agile</button>
+            </div>
+            <label for="agile-client-id">Client ID do Agile</label>
+            <input id="agile-client-id" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Cole o Client ID do aplicativo" maxlength="200">
+            <label for="agile-client-secret">Client Secret do Agile</label>
+            <input id="agile-client-secret" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Cole o Client Secret do Agile" maxlength="512">
+            <button id="agile-save" class="button primary" type="button">Salvar credenciais do Agile</button>
+            <p id="agile-message" class="hint" role="status" aria-live="polite"></p>
+            <div id="agile-test-results" class="agile-results" hidden></div>
+            <p class="orders-note">Teste somente de leitura: mostra os pedidos do cliente 12678 na amostra consultada. Nenhum pedido será impresso automaticamente até validarmos o mapeamento Agile → WinThor.</p>
           </div>
         </div>
         <div id="admin-orders-panel" hidden>
