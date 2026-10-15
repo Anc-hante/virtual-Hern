@@ -427,6 +427,7 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       const record = agileHistory.get(id);
       if (!record) return { ok:false, error:'Pedido nao encontrado no historico Agile deste totem.' };
       if (worker?.busy) return { ok:false, error:'Impressora ocupada. Aguarde o pedido atual.' };
+      if (worker) worker.busy = true;
       try {
         const result = await agilePrint.printOrder(record, site.webContents, { reprint:true });
         return { ok:true, message:result.printed
@@ -434,6 +435,8 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
           : 'Pedido ja impresso.' };
       } catch (e) {
         return { ok:false, error:e.message };
+      } finally {
+        if (worker) worker.busy = false;
       }
     }
     case 'admin:test':
