@@ -91,6 +91,15 @@ function display(state) {
   });
   updateToolbar(state);
   if (next === 'complete' && previous !== 'complete') confetti();
+  if (next === 'complete') {
+    const printed = state.printState === 'printed';
+    if (state.printMessage) {
+      $('checkout-print-status').textContent = state.printMessage;
+    }
+    $('checkout-print-retry').hidden = printed || state.printState === 'printing';
+    $('new-session').hidden = !printed;
+    $('new-session').disabled = !printed;
+  }
   if (next === 'login' && previous !== 'login') {
     $('admin-user').value = '';
     $('admin-pass').value = '';
@@ -118,6 +127,13 @@ $('restart').onclick = () => void invoke('restart');
 $('settings').onclick = () => void invoke('admin:open');
 $('retry').onclick = () => void invoke('retry');
 $('new-session').onclick = () => void invoke('new-session');
+$('checkout-print-retry').onclick = async () => {
+  $('checkout-print-retry').disabled = true;
+  const result = await invoke('checkout:retry-print');
+  if (!result.ok) $('checkout-print-status').textContent =
+    result.error || 'Nao foi possivel consultar o pedido.';
+  $('checkout-print-retry').disabled = false;
+};
 $('login-close').onclick = () => void invoke('admin:close');
 $('printer-close').onclick = () => void invoke('admin:close');
 $('printer-refresh').onclick = () => void loadPrinters();
