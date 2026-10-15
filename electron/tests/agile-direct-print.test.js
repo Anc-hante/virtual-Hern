@@ -84,6 +84,9 @@ test('checkout correlation never prints random orders sharing customer 12678', (
   const unrelated = order('T-2',{amount:'87.00'});
   assert.equal(matchCheckout([target,unrelated],{hint:'996655',at}).order.agile_id,'T-1');
   assert.equal(matchCheckout([target,unrelated],{amount:'25.50',at}).order.agile_id,'T-1');
+  assert.equal(matchCheckout([target,unrelated],{
+    hint:'SITE-ONLY-ID',amount:'25.50',at
+  }).order.agile_id,'T-1');
   assert.ok(matchCheckout([target,order('T-3')],{amount:'25.50',at}).reason.includes('varios'));
   assert.equal(matchCheckout([target],{at}).order,undefined);
   assert.equal(matchCheckout([target],{hint:'UNKNOWN',at}).order,undefined);
