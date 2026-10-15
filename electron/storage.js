@@ -61,13 +61,14 @@ function saveAgentToken(value, cryptoProvider = windowsProtection()) {
   const encrypted = cryptoProvider.encryptString(token);
   fs.writeFileSync(agentTokenFile, encrypted, { flag: 'w', mode: 0o600 });
 }
-function loadAgentToken(cryptoProvider = windowsProtection()) {
+function loadAgentToken(cryptoProvider) {
   if (!fs.existsSync(agentTokenFile)) return '';
-  if (!cryptoProvider?.isEncryptionAvailable?.()) {
+  const protector = cryptoProvider || windowsProtection();
+  if (!protector?.isEncryptionAvailable?.()) {
     throw new Error('O token foi salvo mas o Windows nao permite descriptografa-lo.');
   }
   try {
-    return cryptoProvider.decryptString(fs.readFileSync(agentTokenFile));
+    return protector.decryptString(fs.readFileSync(agentTokenFile));
   } catch (_error) {
     throw new Error('Nao foi possivel abrir o token local. Configure novamente no admin.');
   }
