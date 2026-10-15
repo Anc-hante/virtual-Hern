@@ -6,6 +6,8 @@ const { app, BrowserWindow, WebContentsView, ipcMain } = require('electron');
 const api = require('./api');
 const printer = require('./printer');
 const agile = require('./agile');
+const agilePrint = require('./agile-print');
+const agileHistory = require('./agile-history');
 const storage = require('./storage');
 
 const HOME = 'https://www.grupohernandes.com.br/';
@@ -82,14 +84,11 @@ async function installSiteScripts() {
 }
 function newSession() {
   sessionId = crypto.randomUUID();
-  void api.sendEvent('session_started', sessionId, {
-    url: HOME,
-    app_version: app.getVersion()
-  });
+  // Standalone Agile mode: no request to HernandesDash at session start.
 }
 async function resetService() {
   const old = sessionId;
-  void api.sendEvent('session_reset', old, { reason: 'manual' });
+  // Session reset stays local: avoids unnecessary API rate limits.
   newSession();
   if (!site || site.webContents.isDestroyed()) return;
   completionLocked = false;
@@ -201,7 +200,7 @@ function createWindow() {
   });
   site.webContents.on('context-menu', e => e.preventDefault());
 
-  worker = new printer.PrintWorker(site.webContents);
+  worker = new agilePrint.AgilePrintWorker(site.webContents);
   worker.start();
 
   void window.loadFile(path.join(__dirname, 'shell', 'index.html')).then(() => {
@@ -236,7 +235,8 @@ ipcMain.on('totem:site-message', (event, message) => {
       !allowedEvents.has(message.event_type)) return;
 
   const { type, event_type, event_id, device_id, session_id, ...data } = message;
-  void api.sendEvent(event_type, sessionId, data);
+  // The checkout signal is local. Agile is the source of order truth.
+  // Never send raw checkout events to the old HernandesDash API.
 });
 
 ipcMain.handle('kiosk:action', async (event, action, payload) => {
@@ -314,8 +314,12 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
     case 'admin:agile-test': {
       if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
       try {
-        const result = await agile.testConnection();
-        return { ok: true, message: 'Agile conectado. Consulta de pedidos funcionando.', ...result };
+        const result = await agile.diagnose();
+        return { ok: result.connected,
+          message: result.connected
+            ? 'Agile conectado. Recursos e amostra de pedidos consultados.'
+            : 'Nenhum recurso Agile pode ser consultado; verifique erros abaixo.',
+          ...result };
       } catch (e) {
         return { ok: false, error: e.message };
       }
@@ -399,30 +403,37 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       }
     }
     case 'admin:orders': {
-      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      if (screen !== 'printers') return { ok:false, error:'Area restrita.' };
+      let syncError = '';
       try {
-        const result = await api.orderHistory(payload?.search, payload?.offset);
-        return { ok: true, ...result };
+        // Refresh the on-device list directly from Agile. No HernandesDash.
+        const page = await agile.list('pedidos', {}, 1, 25);
+        for (const record of page.data) {
+          const order = agile.safeTotemOrder(record, 'pedidos');
+          if (order && !agileHistory.get(order.agile_id)) {
+            agileHistory.update(order, { print_status:'historical' });
+          }
+        }
       } catch (e) {
-        return { ok: false, error: e.message };
+        syncError = e.message;
       }
+      const result = agileHistory.history(String(payload?.search || '').trim(),
+        Math.max(0, Number(payload?.offset) || 0));
+      return { ...result, warning:syncError };
     }
     case 'admin:reprint': {
-      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
-      const chosen = storage.selectedPrinter();
-      if (!chosen) return { ok: false, error: 'Selecione e salve uma impressora antes de reimprimir.' };
+      if (screen !== 'printers') return { ok:false, error:'Area restrita.' };
+      const id = String(payload?.orderId || '').trim();
+      const record = agileHistory.get(id);
+      if (!record) return { ok:false, error:'Pedido nao encontrado no historico Agile deste totem.' };
+      if (worker?.busy) return { ok:false, error:'Impressora ocupada. Aguarde o pedido atual.' };
       try {
-        const available = await printer.installedPrinters(site.webContents);
-        if (!available.some(p => p.name === chosen)) {
-          return { ok: false, error: 'A impressora salva nao esta disponivel no Windows.' };
-        }
-        const result = await api.requestReprint(payload?.orderId);
-        // Do not pretend paper came out: server acknowledged a QUEUED job.
-        // Trigger a poll now rather than waiting for the normal 6s interval.
-        if (worker) void worker.tick();
-        return { ok: true, message: 'Pedido colocado na fila. Aguarde a ELGIN i8.', ...result };
+        const result = await agilePrint.printOrder(record, site.webContents, { reprint:true });
+        return { ok:true, message:result.printed
+          ? 'Comprovante enviado a impressora Windows. Aguarde a saida do papel.'
+          : 'Pedido ja impresso.' };
       } catch (e) {
-        return { ok: false, error: e.message };
+        return { ok:false, error:e.message };
       }
     }
     case 'admin:test':
