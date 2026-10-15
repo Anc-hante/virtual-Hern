@@ -15,6 +15,7 @@ const queueFile = path.join(folder, 'totem-events-pending.jsonl');
 const leadFile = path.join(folder, 'leads.csv');
 const agentTokenFile = path.join(folder, 'api-token.dpapi');
 const apiTransportFile = path.join(folder, 'api-internal-cert-test.json');
+const agileCredentialsFile = path.join(folder, 'agile-credentials.dpapi');
 
 function ensureFolder() { fs.mkdirSync(folder, { recursive: true }); }
 function loadDeviceId() {
@@ -77,9 +78,10 @@ function loadAgentToken(cryptoProvider) {
 function allowInternalCertificate() {
   try {
     const settings = JSON.parse(fs.readFileSync(apiTransportFile, 'utf8'));
-    return settings.allowInternalCertificate === true;
+    return settings.allowInternalCertificate !== false;
   } catch (_) {
-    return false; // Strict TLS is the default, including invalid config.
+    // Requested corporate pilot default, still restricted to one HTTPS origin.
+    return true;
   }
 }
 function setInternalCertificateMode(enabled) {
@@ -92,6 +94,37 @@ function setInternalCertificateMode(enabled) {
     JSON.stringify({ allowInternalCertificate: enabled }, null, 2),
     { flag: 'w', mode: 0o600 }
   );
+}
+function saveAgileCredentials(clientId, clientSecret, cryptoProvider = windowsProtection()) {
+  const id = String(clientId || '').trim();
+  const secret = String(clientSecret || '').trim();
+  if (!id || !secret || id.length > 200 || secret.length > 512 ||
+      /[\r\n]/.test(id) || /[\r\n]/.test(secret)) {
+    throw new Error('Preencha Client ID e Client Secret validos.');
+  }
+  if (!cryptoProvider?.isEncryptionAvailable?.()) {
+    throw new Error('A protecao de credenciais do Windows nao esta disponivel.');
+  }
+  ensureFolder();
+  const encrypted = cryptoProvider.encryptString(JSON.stringify({
+    client_id: id,
+    client_secret: secret
+  }));
+  fs.writeFileSync(agileCredentialsFile, encrypted, { flag: 'w', mode: 0o600 });
+}
+function loadAgileCredentials(cryptoProvider) {
+  if (!fs.existsSync(agileCredentialsFile)) return null;
+  const protector = cryptoProvider || windowsProtection();
+  if (!protector?.isEncryptionAvailable?.()) {
+    throw new Error('A protecao de credenciais do Windows nao esta disponivel.');
+  }
+  try {
+    const value = JSON.parse(protector.decryptString(fs.readFileSync(agileCredentialsFile)));
+    if (!value.client_id || !value.client_secret) throw new Error('Dados incompletos.');
+    return { client_id: value.client_id, client_secret: value.client_secret };
+  } catch (_) {
+    throw new Error('Falha ao abrir as credenciais Agile protegidas. Configure novamente.');
+  }
 }
 function recordLead(data) {
   const name = String(data.name || '').trim().slice(0, 120);
@@ -107,5 +140,5 @@ function recordLead(data) {
 module.exports = {
   folder, queueFile, agentTokenFile, ensureFolder, loadDeviceId,
   selectedPrinter, savePrinter, recordLead, saveAgentToken, loadAgentToken,
-  allowInternalCertificate, setInternalCertificateMode
+  allowInternalCertificate, setInternalCertificateMode, saveAgileCredentials, loadAgileCredentials
 };
