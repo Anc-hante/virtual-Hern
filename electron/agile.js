@@ -173,7 +173,7 @@ async function diagnose() {
   }
   // Fetch items for at most one matched order, to keep API consumption low.
   let itemSample = { count:0, items:[], error:'' };
-  const candidate = samples.find(order => order.agile_id && order.erp_order) ||
+  const candidate = samples.find(order => order.source === 'pedidos') ||
     samples.find(order => order.agile_id);
   if (candidate && !sources.some(source => /429/.test(source.error || ''))) {
     try {
