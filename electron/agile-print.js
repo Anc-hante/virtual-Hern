@@ -85,7 +85,7 @@ function matchCheckout(orders, pending) {
   const live = orders.filter(order => order && !isCancelled(order));
   const hint = String(pending?.hint || '').trim();
   if (hint) {
-    const matched = live.filter(order =>
+    const matched = orders.filter(order => order).filter(order =>
       [order.agile_id, order.erp_order, order.transaction]
         .some(id => String(id || '') === hint)
     );
