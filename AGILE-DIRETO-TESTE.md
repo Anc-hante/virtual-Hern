@@ -46,10 +46,16 @@ mostra o identificador Agile e `WINTHOR: AGUARDANDO INTEGRACAO`.
 - Login Agile usa `POST /api/usuario/login` e JWT apenas em memoria.
 - Requisicoes Agile usam HTTPS com validacao TLS, sem excecoes.
 - O client trata 429 respeitando `Retry-After` ou pausa progressiva.
-- Consulta automatica a cada **45 segundos**, nao 6s.
+- Consulta automatica continua a cada **10 segundos** com primeira consulta imediata;
+  em HTTP 429, respeita Retry-After e pausa progressiva para nao bloquear a conta.
 - Na primeira consulta, pedidos existentes sao colocados como **historicos**,
-  para nao imprimir uma fila inteira de vendas antigas. Novos pedidos sao
-  processados apos essa primeira consulta.
+  para nao imprimir uma fila inteira de vendas antigas. Pedidos novos e
+  recentes posteriores sao enfileirados e impressos uma unica vez, mesmo sem
+  evento de checkout no navegador. Uma venda correlacionada a checkout
+  pendente tem prioridade.
+- A impressao nao depende de status confirmado nem NUMPED WinThor. Um pedido
+  que apareceu no Agile, do cliente 12678, sem cancelamento/rascunho e com
+  produtos reais pode ser impresso usando a transacao Agile.
 - A impressao so ocorre quando ha produtos reais. Reimpressao requer login
   do administrador. O spooler nao comprova fisicamente a saida do papel.
 - Ledger local de impressao:
@@ -77,12 +83,14 @@ checkout. Nao contornar imprimindo itens inventados.
 
 ## Pendencias de homologacao
 
-- Confirmar em conta Agile real GET `pedidos`, `erp_pedidos`,
-  `erp_pedidos_produtos` e respectivas permissoes.
+- Confirmar em conta Agile real GET `erp_pedidos` e `erp_pedidos_produtos`.
+  Verificar se `pedidos` nativo permite consultar ainda mais cedo e
+  relacionar os itens antes do ERP.
 - Confirmar que o campo `codcli` de `pedidos` e igual a 12678.
 - Confirmar como `id_pedido` se relaciona a `id_pedido` e
   `id_pedido_erp` dos itens.
-- Testar um novo pedido e a impressao fisica na ELGIN i8.
+- Testar uma venda com NUMPED ausente: cupom deve mostrar TRANSACAO AGILE
+  e WINTHOR AGUARDANDO INTEGRACAO. Confirmar impressao fisica na ELGIN i8.
 - Testar navegacao do botao Iniciar novo atendimento separadamente.
 
 ## Como baixar
@@ -98,3 +106,24 @@ Pedir para ler este arquivo primeiro e continuar pela branch `main`
 do repo `Anc-hante/virtual-Hern`. Nao refazer a integracao
 via HernandesDash. Nao publicar segredos. Solicitar apenas o
 diagnostico sanitizado do Admin > Integracao Agile e a saida real da ELGIN i8.
+
+## Testar com .env privada (Node 22 ou superior)
+
+A raiz do repositorio contem `.env.example` sem nenhuma credencial real.
+No computador Windows, copie para `.env`, preencha **AGILE_CLIENT_ID** e
+**AGILE_CLIENT_SECRET** e execute:
+
+```powershell
+node --env-file=.env scripts/testar-agile.cjs
+```
+
+O teste faz login, consulta o cliente 12678, busca a transacao/NUMPED e
+tenta recuperar itens. Exibe somente metadados resumidos. Nao imprime e nao
+grava credenciais. O `.env` esta ignorado no Git.
+
+No fluxo autonomo, **ECOMMERCE_TOTEM_API_TOKEN nao e necessario**. Essa
+credencial so interessa aos endpoints antigos do Django.
+
+**Teste real nao realizado neste ambiente:** a resolucao DNS para a
+API Agile nao estava disponivel. O GitHub Actions valida logica, estrutura
+e build com dados de teste, sem enviar segredos para os logs.
