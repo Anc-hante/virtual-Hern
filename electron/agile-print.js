@@ -226,9 +226,17 @@ class AgilePrintWorker {
         const found = matchCheckout(orders, pending);
         if (found.order && agile.printEligibility(found.order)) {
           linked = found.order;
-          if (!ledger.get(linked.agile_id)?.print_count) {
-            ledger.update(linked, { print_status:'pending', auto_pending:true });
+          if (ledger.get(linked.agile_id)?.print_count > 0) {
+            // The continuous watcher may already have printed before the
+            // ecommerce displayed its success popup. Never send a 2nd copy.
+            ledger.clearPendingCheckout();
+            this.onPrinted({
+              session:pending.session, order_id:linked.agile_id,
+              duplicate:true
+            });
+            return;
           }
+          ledger.update(linked, { print_status:'pending', auto_pending:true });
         } else {
           this.onStatus({
             state:'waiting',
