@@ -308,6 +308,33 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
         return { ok: false, error: 'Nao foi possivel gerar o QR Code do cupom.' };
       }
     }
+    case 'admin:orders': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      try {
+        const result = await api.orderHistory(payload?.search, payload?.offset);
+        return { ok: true, ...result };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+    case 'admin:reprint': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      const chosen = storage.selectedPrinter();
+      if (!chosen) return { ok: false, error: 'Selecione e salve uma impressora antes de reimprimir.' };
+      try {
+        const available = await printer.installedPrinters(site.webContents);
+        if (!available.some(p => p.name === chosen)) {
+          return { ok: false, error: 'A impressora salva nao esta disponivel no Windows.' };
+        }
+        const result = await api.requestReprint(payload?.orderId);
+        // Do not pretend paper came out: server acknowledged a QUEUED job.
+        // Trigger a poll now rather than waiting for the normal 6s interval.
+        if (worker) void worker.tick();
+        return { ok: true, message: 'Pedido colocado na fila. Aguarde a ELGIN i8.', ...result };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
     case 'admin:test':
     case 'admin:save': {
       if (screen !== 'printers') return { ok: false };
