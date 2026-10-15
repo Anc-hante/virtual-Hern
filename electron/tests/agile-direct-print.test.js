@@ -41,28 +41,40 @@ test('Agile "recebido" is printable before invoicing; uncertain or cancelled sta
 });
 
 test('received ERP record fetches exact linked products by id_pedido without NUMPED', async () => {
-  const old = agile.list;
+  // itemsForOrder calls the module-local list() function; mock the network
+  // boundary instead of changing an unrelated exported property.
+  const oldFetch = global.fetch;
+  const oldLoad = storage.loadAgileCredentials;
   const calls = [];
   try {
-    agile.list = async (resource, filters) => {
-      calls.push({resource, filters});
-      return {data:[
+    storage.loadAgileCredentials = () => ({
+      client_id:'fake-local-id', client_secret:'fake-local-secret'
+    });
+    global.fetch = async (url, opts) => {
+      calls.push({url, opts});
+      if (String(url).endsWith('/api/usuario/login')) {
+        return {ok:true,status:200,json:async()=>({Token:'mock-jwt-only',Expiration:3600})};
+      }
+      return {ok:true,status:200,json:async()=>({data:[
         {id_pedido:'RECORD-123',id_produto:'4702',descricao_produto_snapshot:'Ketchup',
           quantidade:'2',valor_unitario:'10.00',valor_total:'20.00'},
         {id_pedido:'OTHER',id_produto:'8912',descricao_produto_snapshot:'Unrelated',
           quantidade:'1',valor_unitario:'99.00'}
-      ]};
+      ], meta:{total:2}})};
     };
+    agile.resetSession();
     const items = await agile.itemsForOrder(order('RECORD-123', {
       source:'erp_pedidos', erp_order:''
     }));
-    assert.equal(calls.length,1);
-    assert.equal(calls[0].resource,'erp_pedidos_produtos');
-    assert.equal(calls[0].filters.id_pedido,'RECORD-123');
+    const request = calls.find(x => x.url.includes('erp_pedidos_produtos'));
+    assert.ok(request);
+    assert.match(request.url, /id_pedido=RECORD-123/);
     assert.equal(items.length,1);
     assert.equal(items[0].product_name,'Ketchup');
   } finally {
-    agile.list=old;
+    global.fetch=oldFetch;
+    storage.loadAgileCredentials=oldLoad;
+    agile.resetSession();
   }
 });
 
