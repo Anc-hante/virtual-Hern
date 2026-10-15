@@ -14,6 +14,7 @@ const deviceFile = path.join(folder, 'totem-device-id.txt');
 const queueFile = path.join(folder, 'totem-events-pending.jsonl');
 const leadFile = path.join(folder, 'leads.csv');
 const agentTokenFile = path.join(folder, 'api-token.dpapi');
+const apiTransportFile = path.join(folder, 'api-internal-cert-test.json');
 
 function ensureFolder() { fs.mkdirSync(folder, { recursive: true }); }
 function loadDeviceId() {
@@ -73,6 +74,25 @@ function loadAgentToken(cryptoProvider) {
     throw new Error('Nao foi possivel abrir o token local. Configure novamente no admin.');
   }
 }
+function allowInternalCertificate() {
+  try {
+    const settings = JSON.parse(fs.readFileSync(apiTransportFile, 'utf8'));
+    return settings.allowInternalCertificate === true;
+  } catch (_) {
+    return false; // Strict TLS is the default, including invalid config.
+  }
+}
+function setInternalCertificateMode(enabled) {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('Modo HTTPS interno invalido.');
+  }
+  ensureFolder();
+  fs.writeFileSync(
+    apiTransportFile,
+    JSON.stringify({ allowInternalCertificate: enabled }, null, 2),
+    { flag: 'w', mode: 0o600 }
+  );
+}
 function recordLead(data) {
   const name = String(data.name || '').trim().slice(0, 120);
   const phone = String(data.phone || '').trim().slice(0, 40);
@@ -86,5 +106,6 @@ function recordLead(data) {
 }
 module.exports = {
   folder, queueFile, agentTokenFile, ensureFolder, loadDeviceId,
-  selectedPrinter, savePrinter, recordLead, saveAgentToken, loadAgentToken
+  selectedPrinter, savePrinter, recordLead, saveAgentToken, loadAgentToken,
+  allowInternalCertificate, setInternalCertificateMode
 };
