@@ -1,3 +1,15 @@
+> **NOVO FLUXO (Agile direto):** A versão atual do Electron consulta pedidos
+> diretamente na API Agile, sem usar a fila do HernandesDash e sem
+> `ECOMMERCE_TOTEM_API_TOKEN`. Configure **Client ID** e **Client Secret**
+> apenas na área administrativa **Integração Agile**. Veja
+> [AGILE-DIRETO-TESTE.md](./AGILE-DIRETO-TESTE.md). Os tópicos de
+> autenticação HernandesDash abaixo se referem ao fluxo legado e não
+> são necessários para os novos cupons Agile.
+>
+> **Privacidade:** não salvar segredos no GitHub. Nenhum `.env` contendo
+> credenciais foi enviado ao repositório. A configuração é feita uma vez
+> no Windows, criptografada com DPAPI.
+
 # Hernandes Checkout — Electron
 
 Totem de autoatendimento Windows (tela sensível ao toque) usando **Electron/Chromium**,
