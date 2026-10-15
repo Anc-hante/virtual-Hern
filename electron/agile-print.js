@@ -9,8 +9,9 @@ function clean(value) {
   return String(value == null ? '' : value).replace(/[\r\n\t]+/g, ' ').trim();
 }
 function money(input) {
-  const raw = clean(input).replace(/\./g, '').replace(',', '.');
-  const amount = Number(raw) || Number(input) || 0;
+  const source = clean(input);
+  const raw = source.includes(',') ? source.replace(/\./g, '').replace(',', '.') : source;
+  const amount = Number(raw) || 0;
   return amount.toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
 }
 function receipt(order, items) {
