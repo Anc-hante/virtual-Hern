@@ -23,6 +23,9 @@ let site = null;
 let worker = null;
 let screen = 'loading';
 let completionLocked = false;
+let receiptConfirmed = false;
+let completedCheckoutId = '';
+let returnHomeTimer = null;
 let sessionId = crypto.randomUUID();
 let attempts = 0;
 let lockUntil = 0;
@@ -87,28 +90,70 @@ function newSession() {
   // Standalone Agile mode: no request to HernandesDash at session start.
 }
 async function resetService() {
-  const old = sessionId;
-  // Session reset stays local: avoids unnecessary API rate limits.
-  newSession();
-  if (!site || site.webContents.isDestroyed()) return;
-  completionLocked = false;
-  firstLoadComplete = true;
-  showScreen('shop');
+  // An unfinished receipt is never dismissed by a customer action.
+  if (screen === 'complete' && !receiptConfirmed) {
+    return { ok:false, error:'Aguarde o envio do cupom à impressora.' };
+  }
+  if (returnHomeTimer) clearTimeout(returnHomeTimer);
+  returnHomeTimer = null;
+  if (!site || site.webContents.isDestroyed()) {
+    return { ok:false, error:'Navegador do checkout indisponivel.' };
+  }
 
-  // Clean the site's cart using its own UI before returning home.
+  // Clear just the previous cart and kiosk interaction. Preserve ecommerce
+  // authentication cookies and do not trust the old asynchronous DOM reset,
+  // which sometimes returned to the confirmation/OK screen.
   try {
-    const result = await site.webContents.executeJavaScript(
-      'window.__hernandesKioskReset?.("manual") ?? false'
-    );
-    if (result === false) site.webContents.loadURL(HOME);
-  } catch (_) {
-    site.webContents.loadURL(HOME);
+    await site.webContents.executeJavaScript(String.raw`
+      (() => {
+        const keys = [/cart/i,/carrinho/i,/basket/i,/shopping.?bag/i,
+          /^__hernandes_kiosk_/i];
+        for (const store of [localStorage, sessionStorage]) {
+          const remove = [];
+          for (let i=0; i<store.length; i++) {
+            const key = store.key(i);
+            if (key && keys.some(exp => exp.test(key))) remove.push(key);
+          }
+          for (const key of remove) store.removeItem(key);
+        }
+        window.__hernandesResetCycle?.();
+        return true;
+      })()
+    `);
+  } catch (e) {
+    console.warn('[Totem] Nao foi possivel limpar o carrinho antes de reiniciar:', e.message);
+  }
+
+  try {
+    completionLocked = false;
+    firstLoadComplete = true;
+    await site.webContents.loadURL(HOME);  // Always full navigation, never SPA back/OK.
+    newSession();
+    receiptConfirmed = false;
+    completedCheckoutId = '';
+    showScreen('shop');
+    return { ok:true };
+  } catch (e) {
+    showScreen('error');
+    return { ok:false, error:'Falha ao carregar a pagina inicial: ' + e.message };
   }
 }
-function completion() {
+function completion(orderData = {}) {
   if (completionLocked) return;
   completionLocked = true;
-  showScreen('complete');
+  receiptConfirmed = false;
+  completedCheckoutId = sessionId;
+  showScreen('complete', {
+    printState:'waiting',
+    printMessage:'Procurando seu pedido recebido no Agile…'
+  });
+  if (worker) {
+    worker.beginCheckout({
+      session:completedCheckoutId,
+      order_number:orderData?.order_number,
+      amount:orderData?.amount
+    });
+  }
 }
 
 function createWindow() {
@@ -200,7 +245,24 @@ function createWindow() {
   });
   site.webContents.on('context-menu', e => e.preventDefault());
 
-  worker = new agilePrint.AgilePrintWorker(site.webContents);
+  worker = new agilePrint.AgilePrintWorker(site.webContents, {
+    onStatus: status => {
+      if (screen !== 'complete' || !completionLocked ||
+          (status.session && status.session !== completedCheckoutId)) return;
+      emitState({ printState:status.state, printMessage:status.message });
+    },
+    onPrinted: result => {
+      if (screen !== 'complete' || !completionLocked ||
+          result.session !== completedCheckoutId) return;
+      receiptConfirmed = true;
+      emitState({
+        printState:'printed',
+        printMessage:'Comprovante enviado à impressora! Preparando novo atendimento…'
+      });
+      if (returnHomeTimer) clearTimeout(returnHomeTimer);
+      returnHomeTimer = setTimeout(() => void resetService(), 2500);
+    }
+  });
   worker.start();
 
   void window.loadFile(path.join(__dirname, 'shell', 'index.html')).then(() => {
@@ -220,7 +282,7 @@ ipcMain.on('totem:site-message', (event, message) => {
       !message || typeof message !== 'object') return;
 
   if (message.type === 'kiosk') {
-    if (message.action === 'completion-lock') completion();
+    if (message.action === 'completion-lock') completion(message.order || {});
     // A manual reset is already controlled from the shell. Do not
     // execute legacy automatic browser resets from page messages.
     return;
@@ -261,9 +323,15 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       void site.webContents.loadURL(HOME);
       return { ok: true };
     case 'new-session':
-      if (screen !== 'complete') return { ok: false };
-      await resetService();
-      return { ok: true };
+      if (screen !== 'complete') return { ok:false };
+      return resetService();
+    case 'checkout:retry-print':
+      if (screen !== 'complete' || receiptConfirmed) {
+        return { ok:false, error:'Nenhuma impressao pendente.' };
+      }
+      if (!worker) return { ok:false, error:'Impressora indisponivel.' };
+      worker.retryCheckout();
+      return { ok:true, message:'Verificacao solicitada. Aguarde o Agile.' };
     case 'admin:open':
       if (screen !== 'shop') return { ok: false };
       attempts = 0;
