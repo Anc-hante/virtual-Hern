@@ -38,56 +38,102 @@ test('Agile ID and secret stored encrypted, never plaintext', () => {
   }
 });
 
-test('Agile JWT test validates orders, ERP orders, product fields without returning other customers', async () => {
+test('Agile diagnosis uses the working ERP response and skips incompatible pedidos endpoint', async () => {
   const storage = require('../storage');
   const agile = require('../agile');
   const oldLoad = storage.loadAgileCredentials;
   const oldFetch = global.fetch;
   const requests = [];
   try {
-    storage.loadAgileCredentials = () => ({ client_id:'LOCAL-TEST-ID', client_secret:'LOCAL-TEST-SECRET' });
+    storage.loadAgileCredentials = () => ({
+      client_id:'LOCAL-TEST-ID', client_secret:'LOCAL-TEST-SECRET'
+    });
     global.fetch = async (url, opts) => {
       requests.push({ url, ...opts });
       if (url.endsWith('/api/usuario/login')) {
-        return { ok: true, status: 200, json: async () => ({
-          Token: 'JWT-TEST-ONLY', Expiration: 3600
+        return { ok:true, status:200, json:async()=>({
+          Token:'JWT-TEST-ONLY', Expiration:3600
         }) };
       }
-      const rows = url.includes('/erp_pedidos_produtos')
-        ? [{ id_pedido:'AGILE-1',id_produto:'4702',quantidade:'2',descricao_produto_snapshot:'Ketchup' }]
-        : url.includes('/erp_pedidos')
-          ? [{ id:'ERP-1',codigo_cliente_erp:'12678',id_pedido_erp:'67890',id_transacao_venda:'TX1' }]
-          : [
-              { id_pedido:'AGILE-1', codcli:'12678', pedido_erp:'', transacao:'TX1',status:'aberto' },
-              { id_pedido:'OTHER-SECRET', codcli:'88888', telefone:'00000' }
-            ];
-      return { ok: true, status:200, json: async () => ({
-        data:rows, meta:{total:rows.length}
-      }) };
+      if (url.includes('/erp_pedidos_produtos')) {
+        return { ok:true, status:200, json:async()=>({
+          data:[
+            { id_pedido_erp:'67890', id_produto:'4702', quantidade:'2',
+              descricao_produto_snapshot:'Ketchup', valor_total:'25.50' },
+            { id_pedido_erp:'OTHER-CLIENT', id_produto:'333',
+              descricao_produto_snapshot:'Another customer product' }
+          ],meta:{total:406532}
+        }) };
+      }
+      if (url.includes('/erp_pedidos')) {
+        return { ok:true, status:200, json:async()=>({
+          data:[
+            { id:'ERP-INTERNAL-1', codigo_cliente_erp:'12678',
+              id_pedido_erp:'67890', id_transacao_venda:'TX1',
+              status_erp:'em_separacao', data_cancelamento:'2026-10-15' },
+            { id:'ERP-INTERNAL-2', codigo_cliente_erp:'12678',
+              id_pedido_erp:'67891', status_erp:'em_separacao' },
+            { id:'ERP-OTHER', codigo_cliente_erp:'88888',
+              id_pedido_erp:'99999', telefone:'SECRET-PII' }
+          ],meta:{total:3}
+        }) };
+      }
+      throw new Error('Unexpected Agile path: ' + url);
     };
     agile.resetSession();
     const result = await agile.diagnose();
-    assert.equal(requests.length, 5);
-    assert.equal(requests[0].url, 'https://api-integracao.agileecommerce.com.br/api/usuario/login');
+    assert.equal(requests.length, 3); // login, ERP orders, products
+    assert.equal(requests[0].url,
+      'https://api-integracao.agileecommerce.com.br/api/usuario/login');
     assert.equal(requests[0].redirect, 'error');
     assert.equal(requests[1].method, 'GET');
     assert.equal(requests[1].headers.Authorization, 'Bearer JWT-TEST-ONLY');
-    assert.equal(result.sources.length, 3);
-    assert.equal(result.itemSample.count, 1);
-    assert.equal(result.sources[0].totem_found, 1);
-    assert.equal(result.orders[0].agile_id, 'AGILE-1');
+    assert.equal(requests.some(r => /\/integracao\/pedidos\?/.test(r.url)), false);
+    assert.equal(result.connected, true);
+    assert.equal(result.sources.length, 2);
+    assert.equal(result.sources[0].totem_found, 2);
+    assert.equal(result.sources[0].cancelled, 1);
+    assert.equal(result.sources[0].awaiting_verification, 1);
+    assert.equal(result.orders[0].erp_order, '67890');
     assert.equal(result.orders[0].transaction, 'TX1');
-    assert.equal(JSON.stringify(result).includes('OTHER-SECRET'), false);
-    assert.equal(JSON.stringify(result).includes('00000'), false);
-    assert.ok(!result.sources[0].fields.includes('telefone'));
-    assert.deepEqual(await agile.itemsForOrder(result.orders[0]), [
-      { product_id:'4702',product_name:'Ketchup',quantity:'2',price:'',value:'' }
-    ]);
+    assert.equal(result.orders[0].cancelled, true);
+    assert.equal(result.orders[0].print_eligible, false);
+    assert.equal(result.orders[1].print_eligible, false);
+    assert.equal(result.itemSample.count, 1);
+    assert.equal(JSON.stringify(result).includes('SECRET-PII'), false);
+    assert.deepEqual(await agile.itemsForOrder(result.orders[0]), [{
+      product_id:'4702', product_name:'Ketchup',
+      quantity:'2', price:'', value:'25.50'
+    }]);
   } finally {
     storage.loadAgileCredentials = oldLoad;
     global.fetch = oldFetch;
     agile.resetSession();
   }
+});
+
+test('Cancel date overrides stale em_separacao and only confirmed ERP statuses print', () => {
+  const agile = require('../agile');
+  const canceled = agile.safeTotemOrder({
+    id:'1',codigo_cliente_erp:'12678',id_pedido_erp:'1960009389',
+    status_erp:'em_separacao',data_cancelamento:'2026-10-15T10:22:00'
+  });
+  assert.equal(canceled.cancelled, true);
+  assert.equal(canceled.print_eligible, false);
+  const uncertain = agile.safeTotemOrder({
+    id:'2',codigo_cliente_erp:'12678',id_pedido_erp:'1960009399',
+    status_erp:'em_separacao',data_cancelamento:null
+  });
+  assert.equal(uncertain.cancelled, false);
+  assert.equal(uncertain.print_eligible, false);
+  const confirmed = agile.safeTotemOrder({
+    id:'3',codigo_cliente_erp:'12678',id_pedido_erp:'1960009485',
+    status_erp:'confirmado',data_cancelamento:null
+  });
+  assert.equal(confirmed.print_eligible, true);
+  assert.equal(agile.safeTotemOrder({
+    id:'4',codigo_cliente_erp:'7777',status_erp:'confirmado'
+  }), null);
 });
 
 test('direct Agile transport uses strict TLS and old proxy default is disabled', () => {
