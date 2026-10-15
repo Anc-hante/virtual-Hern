@@ -114,22 +114,51 @@ function value(row, keys) {
   return '';
 }
 function text(x) { return String(x == null ? '' : x).trim(); }
-function safeTotemOrder(row, resource = 'pedidos') {
+function normalizedStatus(raw) {
+  return text(raw).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function hasCancellationDate(raw) {
+  const value = text(raw);
+  return !!value && !/^(null|false|0+|0000-00-00(?:[ t]00:00:00)?)/i.test(value);
+}
+function isCancelledRecord(row) {
+  if (!row || typeof row !== 'object') return false;
+  if (hasCancellationDate(value(row, ['data_cancelamento', 'dt_cancelamento',
+    'cancelled_at', 'canceled_at']))) return true;
+  if (row.cancelado === true || row.cancelled === true) return true;
+  const statuses = ['status', 'status_operacional', 'status_erp', 'situacao', 'status_pedido'];
+  return statuses.some(field =>
+    /cancel|rejeitad|estornad|excluid|inativ/.test(normalizedStatus(row[field]))
+  );
+}
+function printEligibility(order) {
+  if (!order || order.cancelled) return false;
+  // "em_separacao" is NOT positive proof: cancelled orders have been observed
+  // still reporting that ERP status while synchronization catches up.
+  const state = normalizedStatus(order.status);
+  return /(^|[_\s-])(aprovad|confirmad|faturad|liberad|concluid|autorizad)/.test(state);
+}
+function safeTotemOrder(row, resource = 'erp_pedidos') {
   if (!row || typeof row !== 'object') return null;
-  const code = text(value(row, ['codcli', 'codigo_cliente_erp', 'codcli_erp']));
-  // id_cliente is Agile's internal UUID: it is NOT the ERP customer code.
+  const code = text(value(row, ['codigo_cliente_erp', 'codcli', 'codcli_erp']));
+  // id_cliente is Agile's internal UUID: it is NOT the WinThor customer code.
   if (code !== CUSTOMER_CODE) return null;
-  const agileId = text(value(row, ['id_pedido', 'id', 'external_order_id']));
-  if (!agileId) return null;
-  return {
-    agile_id: agileId,
-    erp_order: text(value(row, ['pedido_erp', 'id_pedido_erp'])),
-    transaction: text(value(row, ['transacao', 'id_transacao_venda', 'nsu_transacao'])),
-    status: text(value(row, ['status', 'status_operacional', 'status_erp'])),
+  const id = text(value(row, ['id', 'id_pedido', 'external_order_id']));
+  const erpOrder = text(value(row, ['id_pedido_erp', 'pedido_erp']));
+  if (!id && !erpOrder) return null;
+  const cancelled = isCancelledRecord(row);
+  const order = {
+    agile_id: id || ('erp:' + erpOrder),
+    erp_order: erpOrder,
+    transaction: text(value(row, ['id_transacao_venda', 'transacao', 'nsu_transacao'])),
+    status: text(value(row, ['status_erp', 'status_operacional', 'status'])),
     amount: text(value(row, ['valor_total', 'valor'])),
-    created_at: text(value(row, ['dt_hr_criacao', 'data_pedido', 'created_at'])),
+    created_at: text(value(row, ['data_pedido', 'created_at', 'dt_hr_criacao'])),
+    cancellation_date: text(value(row, ['data_cancelamento', 'dt_cancelamento', 'cancelled_at'])),
+    cancelled,
     source: resource
   };
+  return { ...order, print_eligible: printEligibility(order) };
 }
 function safeItem(row) {
   if (!row || typeof row !== 'object') return null;
@@ -137,86 +166,89 @@ function safeItem(row) {
   const name = text(value(row, ['descricao_produto_snapshot', 'produto', 'descricao', 'nome']));
   const quantity = text(value(row, ['quantidade', 'qt', 'quantidade_atendida']));
   const price = text(value(row, ['valor_unitario', 'preco_unitario', 'pvenda']));
-  const total = text(value(row, ['valor_total', 'valor']));
+  const total = text(value(row, ['valor_total', 'valor_total_atendido', 'valor']));
   if (!productId && !name) return null;
   return { product_id:productId, product_name:name,
     quantity, price, value:total };
 }
-// This is a bounded *diagnostic* operation: never prints, never persists
-// secrets or raw rows. It never tries other customer's IDs as totem sales.
+function matchingItem(row, order) {
+  const erp = text(order?.erp_order);
+  if (erp) return text(row?.id_pedido_erp) === erp;
+  // Without an ERP number the internal record ID is not necessarily
+  // an Agile order ID; do not associate a product by guessing.
+  return order?.source === 'pedidos' &&
+    text(row?.id_pedido) === text(order?.agile_id);
+}
+
+// The user's Agile account returns ERP orders and products, but the
+// /pedidos response currently has no documented {data: []} shape.
+// One authoritative ERP request plus at most one filtered items request.
+// No broad scan of the entire 400k+ product table, no printing.
 async function diagnose() {
   const sources = [];
-  const samples = [];
-  const resources = ['pedidos', 'erp_pedidos', 'erp_pedidos_produtos'];
-  for (const resource of resources) {
-    try {
-      const filters = resource === 'pedidos' ? { codcli: CUSTOMER_CODE }
-        : resource === 'erp_pedidos' ? { codigo_cliente_erp: CUSTOMER_CODE }
-        : {};
-      const response = await list(resource, filters, 1, 12);
-      const fields = Object.keys(response.data[0] || {})
-        .filter(k => !/nome|telefone|endereco|cpf|cnpj|email|documento/i.test(k))
-        .slice(0, 32);
-      const selected = resource === 'erp_pedidos_produtos'
-        ? []
-        : response.data.map(r => safeTotemOrder(r, resource)).filter(Boolean);
-      sources.push({
-        resource, ok:true, checked:response.data.length,
-        total:Number(response.meta?.total) || 0, fields,
-        totem_found:selected.length
-      });
-      samples.push(...selected.slice(0, 10));
-    } catch (error) {
-      sources.push({ resource, ok:false, error:error.message });
-      if (/429/.test(error.message)) break; // Do not hammer a throttled API.
-    }
-  }
-  // Fetch items for at most one matched order, to keep API consumption low.
+  let matches = [];
   let itemSample = { count:0, items:[], error:'' };
-  const candidate = samples.find(order => order.source === 'pedidos') ||
-    samples.find(order => order.agile_id);
-  if (candidate && !sources.some(source => /429/.test(source.error || ''))) {
+  try {
+    const response = await list('erp_pedidos',
+      { codigo_cliente_erp: CUSTOMER_CODE }, 1, MAX_PAGE_SIZE);
+    matches = response.data.map(row => safeTotemOrder(row, 'erp_pedidos')).filter(Boolean);
+    sources.push({
+      resource:'erp_pedidos', ok:true, checked:response.data.length,
+      total:Number(response.meta?.total) || 0,
+      fields:Object.keys(response.data[0] || {})
+        .filter(k => !/nome|telefone|endereco|cpf|cnpj|email|documento/i.test(k))
+        .slice(0, 35),
+      totem_found:matches.length,
+      cancelled:matches.filter(x=>x.cancelled).length,
+      awaiting_verification:matches.filter(x=>!x.cancelled && !x.print_eligible).length
+    });
+  } catch (error) {
+    sources.push({ resource:'erp_pedidos', ok:false, error:error.message });
+    return { connected:false, sources, orders:[], itemSample };
+  }
+  const candidate = matches.find(order => order.erp_order);
+  if (candidate) {
     try {
-      const items = await itemsForOrder(candidate);
+      const rows = await list('erp_pedidos_produtos',
+        { id_pedido_erp: candidate.erp_order }, 1, MAX_PAGE_SIZE);
+      const items = rows.data.filter(row => matchingItem(row, candidate))
+        .map(safeItem).filter(Boolean);
       itemSample = {
         count:items.length, items:items.slice(0, 5),
         order_id:candidate.agile_id, erp_order:candidate.erp_order
       };
+      sources.push({
+        resource:'erp_pedidos_produtos', ok:true, checked:rows.data.length,
+        total:Number(rows.meta?.total) || 0,
+        totem_found:items.length,
+        fields:Object.keys(rows.data[0] || {})
+          .filter(k => !/nome|telefone|endereco|cpf|cnpj|email|documento/i.test(k))
+          .slice(0, 35)
+      });
     } catch (e) {
+      sources.push({ resource:'erp_pedidos_produtos', ok:false, error:e.message });
       itemSample = { count:0, items:[], error:e.message };
     }
   }
-  return { connected:sources.some(s => s.ok), sources, orders:samples, itemSample };
+  return {
+    connected:true, sources, orders:matches.slice(0, 10), itemSample,
+    warning:matches.some(x=>!x.cancelled && !x.print_eligible)
+      ? 'Alguns pedidos ERP ainda nao tem confirmacao segura. Nao serao impressos automaticamente.'
+      : ''
+  };
 }
-// Best effort, filtered server-side. Fallback to an unfiltered small page
-// only when Agile rejects the filter as a 400. Never fetch all clients.
 async function itemsForOrder(order) {
-  if (!order || (!order.agile_id && !order.erp_order)) return [];
-  const result = [];
-  for (const field of ['id_pedido', 'id_pedido_erp']) {
-    const id = field === 'id_pedido' ? order.agile_id : order.erp_order;
-    if (!id) continue;
-    try {
-      const r = await list('erp_pedidos_produtos', { [field]: id }, 1, MAX_PAGE_SIZE);
-      for (const row of r.data) {
-        const matches =
-          text(row.id_pedido) === text(order.agile_id) ||
-          (order.erp_order && text(row.id_pedido_erp) === text(order.erp_order));
-        if (!matches) continue;
-        const item = safeItem(row);
-        if (item) result.push(item);
-      }
-      if (result.length) break;
-    } catch (e) {
-      if (/429/.test(e.message)) throw e;
-      if (!/HTTP (400|403|404)/.test(e.message)) throw e;
-    }
-  }
-  return result;
+  if (!order || (!order.erp_order && !order.agile_id)) return [];
+  const field = order.erp_order ? 'id_pedido_erp' : 'id_pedido';
+  const id = order.erp_order || order.agile_id;
+  if (!order.erp_order && order.source !== 'pedidos') return [];
+  const response = await list('erp_pedidos_produtos', { [field]:id },
+    1, MAX_PAGE_SIZE);
+  return response.data.filter(row => matchingItem(row, order)).map(safeItem).filter(Boolean);
 }
 function configured() { return !!storage.loadAgileCredentials(); }
 function resetSession() { session = { token:'', expiresAt:0 }; }
 module.exports = {
   BASE, CUSTOMER_CODE, authenticate, list, diagnose, configured, resetSession,
-  safeTotemOrder, safeItem, itemsForOrder
+  safeTotemOrder, safeItem, itemsForOrder, isCancelledRecord, printEligibility, matchingItem
 };
