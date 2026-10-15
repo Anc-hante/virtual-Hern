@@ -108,4 +108,23 @@ async function complete(jobId, success, error = '') {
     error: String(error).slice(0, 1800)
   });
 }
-module.exports = { DEVICE, BASE, sendEvent, flush, claim, complete, explainApiError };
+async function orderHistory(search = '', offset = 0) {
+  const response = await request('/printer/history', {
+    device_id: DEVICE,
+    search: String(search || '').trim().slice(0, 80),
+    offset: Math.max(0, Number(offset) || 0)
+  });
+  return response;
+}
+
+async function requestReprint(orderId) {
+  return request('/printer/reprint', {
+    device_id: DEVICE,
+    order_id: String(orderId || '')
+  });
+}
+
+module.exports = {
+  DEVICE, BASE, sendEvent, flush, claim, complete,
+  orderHistory, requestReprint, explainApiError
+};
