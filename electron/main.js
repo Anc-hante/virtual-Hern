@@ -411,7 +411,7 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
         for (const record of page.data) {
           const order = agile.safeTotemOrder(record, 'pedidos');
           if (order && !agileHistory.get(order.agile_id)) {
-            agileHistory.update(order, { print_status:'historical' });
+            agileHistory.update(order, { print_status:'available' });
           }
         }
       } catch (e) {
