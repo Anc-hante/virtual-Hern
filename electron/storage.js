@@ -78,10 +78,10 @@ function loadAgentToken(cryptoProvider) {
 function allowInternalCertificate() {
   try {
     const settings = JSON.parse(fs.readFileSync(apiTransportFile, 'utf8'));
-    return settings.allowInternalCertificate !== false;
+    return settings.allowInternalCertificate === true;
   } catch (_) {
-    // Requested corporate pilot default, still restricted to one HTTPS origin.
-    return true;
+    // The standalone Agile workflow needs no exception for HernandesDash.
+    return false;
   }
 }
 function setInternalCertificateMode(enabled) {
