@@ -96,7 +96,7 @@ class AgilePrintWorker {
     this.busy = true;
     try {
       if (!agile.configured() || !storage.selectedPrinter()) return;
-      const records = await agile.list('pedidos', {}, 1, 20);
+      const records = await agile.list('pedidos', { codcli:agile.CUSTOMER_CODE }, 1, 20);
       const current = records.data.map(r => agile.safeTotemOrder(r, 'pedidos')).filter(Boolean);
       if (!this.initialized) {
         // Do not auto-print all historical orders when the kiosk is first
