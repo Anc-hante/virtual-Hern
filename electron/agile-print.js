@@ -110,20 +110,36 @@ function matchCheckout(orders, pending) {
   // Never print a random recent order belonging to a shared WinThor customer.
   const amount = Number(pending?.amount);
   const at = Date.parse(pending?.at || '');
-  if (pending?.amount == null || !Number.isFinite(amount) || !Number.isFinite(at)) {
-    return { reason:'A confirmacao ainda nao pode ser vinculada ao pedido Agile. Necessaria identificacao antes de imprimir.' };
+  if (!Number.isFinite(at)) {
+    return { reason:'Aguardando vincular o atendimento ao pedido Agile.' };
   }
-  const matched = live.filter(order => {
-    const orderAmount = Number(order.amount);
+  const inWindow = live.filter(order => {
     const created = Date.parse(order.created_at || '');
-    return Number.isFinite(orderAmount) && Math.abs(orderAmount - amount) < 0.005 &&
-      Number.isFinite(created) && created >= at - 15 * 60 * 1000 &&
-      created <= at + 10 * 60 * 1000;
+    return Number.isFinite(created) &&
+      created >= at - 2 * 60 * 1000 &&
+      created <= at + 5 * 60 * 1000;
   });
-  if (matched.length === 1) return { order:matched[0] };
-  return { reason:matched.length > 1
-    ? 'Ha varios pedidos recentes com o mesmo valor. Nao vou imprimir um pedido de outro atendimento.'
-    : 'Aguardando o pedido recebido aparecer no Agile.' };
+  if (pending?.amount != null && Number.isFinite(amount)) {
+    const amounts = inWindow.filter(order => {
+      const source = String(order.amount || '');
+      const normalized = source.includes(',')
+        ? source.replace(/\./g,'').replace(',','.')
+        : source;
+      const number = Number(normalized);
+      return Number.isFinite(number) && Math.abs(number - amount) < 0.005;
+    });
+    if (amounts.length === 1) return { order:amounts[0] };
+    if (amounts.length > 1) {
+      return { reason:'Mais de um pedido Agile tem o mesmo valor; aguardando identificacao unica.' };
+    }
+  }
+  // The store sometimes omits ID and amount in the success popup. A SINGLE
+  // new order on this dedicated WinThor-12678 totem in a tight time window
+  // is enough to release the thank-you page after the receipt is printed.
+  if (inWindow.length === 1) return { order:inWindow[0] };
+  return { reason:inWindow.length > 1
+    ? 'Ha multiplos pedidos Agile simultaneos; aguardando referencia especifica.'
+    : 'Aguardando o pedido aparecer no Agile.' };
 }
 
 function isRecentOrder(order, now = Date.now()) {
