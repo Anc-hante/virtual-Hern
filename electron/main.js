@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { app, BrowserWindow, WebContentsView, ipcMain } = require('electron');
 const api = require('./api');
 const printer = require('./printer');
+const agile = require('./agile');
 const storage = require('./storage');
 
 const HOME = 'https://www.grupohernandes.com.br/';
@@ -291,6 +292,33 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       attempts = 0;
       showScreen('printers');
       return { ok: true };
+    }
+    case 'admin:agile-status': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      try {
+        return { ok: true, configured: agile.configured() };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+    case 'admin:agile-save': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      try {
+        storage.saveAgileCredentials(payload?.clientId, payload?.clientSecret);
+        agile.resetSession();
+        return { ok: true, message: 'Credenciais Agile salvas com protecao do Windows. Teste a conexao.' };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+    case 'admin:agile-test': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      try {
+        const result = await agile.testConnection();
+        return { ok: true, message: 'Agile conectado. Consulta de pedidos funcionando.', ...result };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
     }
     case 'admin:api-status': {
       if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
