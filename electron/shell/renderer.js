@@ -97,6 +97,12 @@ function display(state) {
     $('login-error').textContent = '';
   }
   if (next === 'printers' && previous !== 'printers') {
+    $('admin-printer-panel').hidden = false;
+    $('admin-orders-panel').hidden = true;
+    $('admin-tab-printer').classList.add('selected');
+    $('admin-tab-orders').classList.remove('selected');
+    $('admin-tab-printer').setAttribute('aria-pressed', 'true');
+    $('admin-tab-orders').setAttribute('aria-pressed', 'false');
     $('receipt-preview-panel').hidden = true;
     $('receipt-preview-button').textContent = '👁 Visualizar modelo completo do cupom (80 mm + QR Code)';
     void loadPrinters();
@@ -146,6 +152,167 @@ async function showReceiptPreview(forceOpen = false) {
   $('receipt-preview-button').textContent = 'Ocultar modelo do cupom';
 }
 $('receipt-preview-button').onclick = () => void showReceiptPreview();
+
+let orderOffset = 0;
+let selectedOrder = null;
+let orderRecords = [];
+let ordersBusy = false;
+let ordersRequest = 0;
+
+function orderMessage(message, error = false) {
+  const el = $('orders-message');
+  el.textContent = message;
+  el.style.color = error ? '#a7191f' : '#526477';
+}
+function adminTab(name) {
+  const orders = name === 'orders';
+  $('admin-printer-panel').hidden = orders;
+  $('admin-orders-panel').hidden = !orders;
+  $('admin-tab-printer').classList.toggle('selected', !orders);
+  $('admin-tab-orders').classList.toggle('selected', orders);
+  $('admin-tab-printer').setAttribute('aria-pressed', String(!orders));
+  $('admin-tab-orders').setAttribute('aria-pressed', String(orders));
+  window.__hernandesHideKeyboard?.();
+  if (orders) void loadOrders(0);
+}
+$('admin-tab-printer').onclick = () => adminTab('printer');
+$('admin-tab-orders').onclick = () => adminTab('orders');
+
+function statusLabel(status) {
+  return ({
+    printed: 'Enviado à impressora',
+    pending: 'Aguardando impressão',
+    claimed: 'Em impressão',
+    failed: 'Falha na impressão'
+  })[status] || 'Sem informação';
+}
+function money(value) {
+  return value === null || value === undefined
+    ? 'Valor indisponível'
+    : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+      .format(Number(value));
+}
+function orderDate(value) {
+  const date = new Date(value || '');
+  return Number.isNaN(date.getTime())
+    ? 'Data indisponível'
+    : date.toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
+}
+function showOrderConfirmation(order) {
+  selectedOrder = order;
+  $('orders-confirm-number').textContent =
+    'Pedido WinThor ' + (order.order_number || 'sem número');
+  $('orders-confirm').hidden = false;
+  $('orders-confirm').scrollIntoView({ block:'nearest', behavior:'smooth' });
+}
+$('orders-cancel').onclick = () => {
+  selectedOrder = null;
+  $('orders-confirm').hidden = true;
+};
+
+function renderOrders(result) {
+  orderRecords = Array.isArray(result.orders) ? result.orders : [];
+  const container = $('orders-list');
+  container.replaceChildren();
+  for (const order of orderRecords) {
+    const row = document.createElement('div');
+    row.className = 'order-row';
+
+    const detail = document.createElement('div');
+    detail.className = 'order-detail';
+    const num = document.createElement('strong');
+    num.textContent = 'Pedido WinThor ' + (order.order_number || 'pendente');
+    const date = document.createElement('small');
+    date.textContent = orderDate(order.occurred_at);
+    const amount = document.createElement('small');
+    amount.className = 'order-total';
+    amount.textContent = money(order.amount) +
+      '  ·  Vias enviadas: ' + (Number(order.print_count) || 0);
+    const status = document.createElement('span');
+    status.className = 'order-status ' + (['printed','failed','pending'].includes(order.print_status)
+      ? order.print_status : '');
+    status.textContent = statusLabel(order.print_status);
+    detail.append(num, date, amount, status);
+
+    const button = document.createElement('button');
+    button.className = 'button secondary';
+    button.type = 'button';
+    button.textContent = order.reprint_allowed ? '🧾 Reimprimir' : 'Aguardando WinThor';
+    button.disabled = !order.reprint_allowed;
+    button.addEventListener('click', () => showOrderConfirmation(order));
+
+    row.append(detail, button);
+    container.append(row);
+  }
+
+  if (!orderRecords.length) {
+    const empty = document.createElement('p');
+    empty.className = 'orders-note';
+    empty.textContent = 'Nenhum pedido encontrado. Tente outro número ou atualize a lista.';
+    container.appendChild(empty);
+  }
+
+  const count = Number(result.count) || 0;
+  $('orders-page-label').textContent = count
+    ? (orderOffset + 1) + '–' + (orderOffset + orderRecords.length) + ' de ' + count
+    : '0 pedidos';
+  $('orders-prev').disabled = orderOffset <= 0;
+  $('orders-next').disabled = result.next_offset === null ||
+    result.next_offset === undefined;
+}
+
+async function loadOrders(offset = 0) {
+  // Request sequence protects the UI against obsolete out-of-order responses.
+  const requestId = ++ordersRequest;
+  orderOffset = Math.max(0, Number(offset) || 0);
+  selectedOrder = null;
+  $('orders-confirm').hidden = true;
+  $('orders-search-button').disabled = true;
+  $('orders-refresh').disabled = true;
+  orderMessage('Consultando pedidos registrados no HernandesDash…');
+  const result = await invoke('admin:orders', {
+    search: $('orders-search').value.trim(),
+    offset: orderOffset
+  });
+  if (requestId !== ordersRequest || current !== 'printers') return;
+  $('orders-search-button').disabled = false;
+  $('orders-refresh').disabled = false;
+  if (!result.ok) {
+    $('orders-list').replaceChildren();
+    $('orders-prev').disabled = true;
+    $('orders-next').disabled = true;
+    $('orders-page-label').textContent = 'Consulta indisponível';
+    orderMessage(result.error || 'Não foi possível consultar o histórico.', true);
+    return;
+  }
+  renderOrders(result);
+  orderMessage('Pedidos registrados neste totem. Use Reimprimir para emitir uma nova via.');
+}
+$('orders-search-button').onclick = () => void loadOrders(0);
+$('orders-refresh').onclick = () => void loadOrders(orderOffset);
+$('orders-search').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); void loadOrders(0); }
+});
+$('orders-prev').onclick = () => void loadOrders(Math.max(0, orderOffset - 25));
+$('orders-next').onclick = () => void loadOrders(orderOffset + 25);
+$('orders-confirm-button').onclick = async () => {
+  if (!selectedOrder || ordersBusy) return;
+  ordersBusy = true;
+  const id = selectedOrder.id;
+  $('orders-confirm-button').disabled = true;
+  orderMessage('Enviando solicitação de reimpressão…');
+  const result = await invoke('admin:reprint', { orderId: id });
+  $('orders-confirm-button').disabled = false;
+  ordersBusy = false;
+  selectedOrder = null;
+  $('orders-confirm').hidden = true;
+  if (!result.ok) {
+    orderMessage(result.error || 'Não foi possível solicitar reimpressão.', true);
+    return;
+  }
+  await loadOrders(orderOffset);
+  orderMessage('Nova via colocada na fila da impressora. Aguarde o papel sair.');
+};
 
 $('printer-test').onclick = async () => {
   if (!chosenPrinter || busy) return;
