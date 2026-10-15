@@ -295,7 +295,31 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
     case 'admin:api-status': {
       if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
       try {
-        return { ok: true, configured: !!api.agentToken(), apiBase: api.BASE };
+        return { ok: true, configured: !!api.agentToken(), apiBase: api.BASE,
+          internalCertificateMode: storage.allowInternalCertificate(),
+          internalCertificateAvailable: api.BASE === 'https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem'
+        };
+      } catch (error) {
+        return { ok: false, error: error.message };
+      }
+    }
+    case 'admin:api-certificate-mode': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      if (typeof payload?.enabled !== 'boolean') {
+        return { ok: false, error: 'Configuracao invalida.' };
+      }
+      if (payload.enabled && api.BASE !== 'https://hernandesvpn.dyndns.org:3000/api/ecommerce/totem') {
+        return { ok: false, error: 'Modo interno limitado ao servidor Hernandes autorizado.' };
+      }
+      try {
+        storage.setInternalCertificateMode(payload.enabled);
+        return {
+          ok: true,
+          enabled: storage.allowInternalCertificate(),
+          message: payload.enabled
+            ? 'Modo de homologacao ativo somente para a API Hernandes. Certificado nao verificado nesta conexao.'
+            : 'Verificacao padrao de certificado HTTPS restaurada.'
+        };
       } catch (error) {
         return { ok: false, error: error.message };
       }
