@@ -24,12 +24,15 @@ jobs:
 
       - name: Install dependencies
         shell: pwsh
-        run: npm install --no-audit --no-fund
+        run: |
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw "npm install failed with exit code $LASTEXITCODE" }
 
       - name: Verify JavaScript and migration tests
         shell: pwsh
         run: |
           npm run check
+          if ($LASTEXITCODE -ne 0) { throw "Electron tests failed with exit code $LASTEXITCODE" }
           Get-ChildItem electron -Filter *.js -Recurse | ForEach-Object {
             node --check $_.FullName
             if ($LASTEXITCODE -ne 0) { throw "Invalid JS: $($_.FullName)" }
@@ -60,7 +63,9 @@ jobs:
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run build
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw "Electron build failed with exit code $LASTEXITCODE" }
 
       - name: Verify executable
         shell: pwsh
