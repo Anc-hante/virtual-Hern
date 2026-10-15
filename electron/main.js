@@ -292,6 +292,44 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       showScreen('printers');
       return { ok: true };
     }
+    case 'admin:api-status': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      try {
+        return { ok: true, configured: !!api.agentToken(), apiBase: api.BASE };
+      } catch (error) {
+        return { ok: false, error: error.message };
+      }
+    }
+    case 'admin:api-save': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      try {
+        // Never echo the token to the renderer, clipboard or logs.
+        storage.saveAgentToken(payload?.token);
+        let validation;
+        try {
+          await api.orderHistory('', 0);
+          validation = { connected: true, message: 'Token salvo e conexao com HernandesDash validada.' };
+        } catch (error) {
+          validation = {
+            connected: false,
+            message: 'Token salvo com protecao do Windows, mas a API ainda falhou: ' + error.message
+          };
+        }
+        if (worker) void worker.tick();
+        return { ok: true, ...validation };
+      } catch (error) {
+        return { ok: false, error: error.message };
+      }
+    }
+    case 'admin:api-test': {
+      if (screen !== 'printers') return { ok: false, error: 'Area restrita.' };
+      try {
+        await api.orderHistory('', 0);
+        return { ok: true, message: 'API conectada. Historico de pedidos disponivel.' };
+      } catch (error) {
+        return { ok: false, error: error.message };
+      }
+    }
     case 'admin:printers': {
       if (screen !== 'printers') return { ok: false };
       const printers = await printer.installedPrinters(site.webContents);
