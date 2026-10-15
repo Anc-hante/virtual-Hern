@@ -93,12 +93,12 @@ test('Agile diagnosis uses the working ERP response and skips incompatible pedid
     assert.equal(result.sources.length, 2);
     assert.equal(result.sources[0].totem_found, 2);
     assert.equal(result.sources[0].cancelled, 1);
-    assert.equal(result.sources[0].awaiting_verification, 1);
+    assert.equal(result.sources[0].awaiting_verification, 0);
     assert.equal(result.orders[0].erp_order, '67890');
     assert.equal(result.orders[0].transaction, 'TX1');
     assert.equal(result.orders[0].cancelled, true);
     assert.equal(result.orders[0].print_eligible, false);
-    assert.equal(result.orders[1].print_eligible, false);
+    assert.equal(result.orders[1].print_eligible, true);
     assert.equal(result.itemSample.count, 1);
     assert.equal(JSON.stringify(result).includes('SECRET-PII'), false);
     assert.deepEqual(await agile.itemsForOrder(result.orders[0]), [{
@@ -112,7 +112,7 @@ test('Agile diagnosis uses the working ERP response and skips incompatible pedid
   }
 });
 
-test('Cancel date overrides stale em_separacao and only confirmed ERP statuses print', () => {
+test('Cancelled records are blocked; pending ERP status does not block an Agile receipt', () => {
   const agile = require('../agile');
   const canceled = agile.safeTotemOrder({
     id:'1',codigo_cliente_erp:'12678',id_pedido_erp:'1960009389',
@@ -125,7 +125,7 @@ test('Cancel date overrides stale em_separacao and only confirmed ERP statuses p
     status_erp:'em_separacao',data_cancelamento:null
   });
   assert.equal(uncertain.cancelled, false);
-  assert.equal(uncertain.print_eligible, false);
+  assert.equal(uncertain.print_eligible, true);
   const confirmed = agile.safeTotemOrder({
     id:'3',codigo_cliente_erp:'12678',id_pedido_erp:'1960009485',
     status_erp:'confirmado',data_cancelamento:null
