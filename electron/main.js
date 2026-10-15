@@ -411,11 +411,20 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       let syncError = '';
       try {
         // Refresh the on-device list directly from Agile. No HernandesDash.
-        const page = await agile.list('pedidos', { codcli:agile.CUSTOMER_CODE }, 1, 25);
+        const page = await agile.list('erp_pedidos',
+          { codigo_cliente_erp:agile.CUSTOMER_CODE }, 1, 25);
         for (const record of page.data) {
-          const order = agile.safeTotemOrder(record, 'pedidos');
-          if (order && !agileHistory.get(order.agile_id)) {
-            agileHistory.update(order, { print_status:'available' });
+          const order = agile.safeTotemOrder(record, 'erp_pedidos');
+          if (!order) continue;
+          const previous = agileHistory.get(order.agile_id);
+          if (order.cancelled) {
+            agileHistory.update(order, { print_status:'cancelled' });
+          } else if (!previous) {
+            agileHistory.update(order, {
+              print_status:order.print_eligible ? 'available' : 'awaiting_verification'
+            });
+          } else {
+            agileHistory.update(order);
           }
         }
       } catch (e) {
@@ -430,10 +439,27 @@ ipcMain.handle('kiosk:action', async (event, action, payload) => {
       const id = String(payload?.orderId || '').trim();
       const record = agileHistory.get(id);
       if (!record) return { ok:false, error:'Pedido nao encontrado no historico Agile deste totem.' };
+      if (record.cancelled || !record.print_eligible || record.print_count < 1) {
+        return { ok:false, error:'Reimpressao bloqueada: pedido cancelado, ainda nao confirmado ou sem primeira via.' };
+      }
       if (worker?.busy) return { ok:false, error:'Impressora ocupada. Aguarde o pedido atual.' };
       if (worker) worker.busy = true;
       try {
-        const result = await agilePrint.printOrder(record, site.webContents, { reprint:true });
+        // Re-check the live ERP record: an order may have been cancelled
+        // after it was cached in the local historical ledger.
+        const currentPage = await agile.list('erp_pedidos',
+          { codigo_cliente_erp:agile.CUSTOMER_CODE }, 1, 25);
+        const fresh = currentPage.data.map(row =>
+          agile.safeTotemOrder(row, 'erp_pedidos'))
+          .find(order => order?.agile_id === record.agile_id);
+        if (!fresh) {
+          return { ok:false, error:'Pedido nao localizado na consulta atual do Agile. Nao reimprimimos sem validar.' };
+        }
+        agileHistory.update(fresh, fresh.cancelled ? { print_status:'cancelled' } : {});
+        if (!agile.printEligibility(fresh)) {
+          return { ok:false, error:'Agile indica cancelamento ou status nao confirmado. Reimpressao bloqueada.' };
+        }
+        const result = await agilePrint.printOrder(fresh, site.webContents, { reprint:true });
         return { ok:true, message:result.printed
           ? 'Comprovante enviado a impressora Windows. Aguarde a saida do papel.'
           : 'Pedido ja impresso.' };
