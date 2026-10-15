@@ -218,16 +218,22 @@ async function diagnose() {
     sources.push({ resource:'erp_pedidos', ok:false, error:error.message });
     return { connected:false, sources, orders:[], itemSample };
   }
-  const candidate = matches.find(order => order.erp_order);
+  // Prefer a WinThor-numbered order, but also inspect products linked by
+  // Agile's internal id_pedido when NUMPED does not exist yet.
+  const candidate = matches.find(order => order.erp_order) ||
+    matches.find(order => order.agile_id && !order.agile_id.startsWith('erp:'));
   if (candidate) {
     try {
+      const filterField = candidate.erp_order ? 'id_pedido_erp' : 'id_pedido';
+      const filterId = candidate.erp_order || candidate.agile_id;
       const rows = await list('erp_pedidos_produtos',
-        { id_pedido_erp: candidate.erp_order }, 1, MAX_PAGE_SIZE);
+        { [filterField]:filterId }, 1, MAX_PAGE_SIZE);
       const items = rows.data.filter(row => matchingItem(row, candidate))
         .map(safeItem).filter(Boolean);
       itemSample = {
         count:items.length, items:items.slice(0, 5),
-        order_id:candidate.agile_id, erp_order:candidate.erp_order
+        order_id:candidate.agile_id, erp_order:candidate.erp_order,
+        link_field:filterField
       };
       sources.push({
         resource:'erp_pedidos_produtos', ok:true, checked:rows.data.length,
