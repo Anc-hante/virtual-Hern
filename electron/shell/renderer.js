@@ -197,10 +197,29 @@ async function loadApiStatus() {
   $('api-status').textContent = result.configured
     ? 'Token configurado no computador'
     : 'Token ainda não configurado';
+  $('api-internal-cert-mode').checked = result.internalCertificateMode === true;
+  $('api-internal-cert-mode').disabled = result.internalCertificateAvailable !== true;
+  $('api-cert-mode-save').disabled = result.internalCertificateAvailable !== true;
+  $('api-cert-mode-message').textContent = result.internalCertificateMode
+    ? 'Modo de homologação ativo. A API interna não verifica a autoridade do certificado.'
+    : 'HTTPS estrito ativado (padrão).';
   apiMessage(result.configured
     ? 'Para trocar o token, insira um novo valor e toque em Salvar.'
     : 'Cole o token gerado no servidor do HernandesDash.');
 }
+$('api-cert-mode-save').onclick = async () => {
+  if (apiBusy) return;
+  apiBusy = true;
+  $('api-cert-mode-save').disabled = true;
+  const enabled = $('api-internal-cert-mode').checked;
+  const result = await invoke('admin:api-certificate-mode', { enabled });
+  apiBusy = false;
+  await loadApiStatus();
+  const el = $('api-cert-mode-message');
+  el.textContent = result.message || result.error || 'Falha ao aplicar configuração.';
+  el.style.color = result.ok ? (enabled ? '#9a3412' : '#28673b') : '#a7191f';
+  if (result.ok) apiMessage('Configuração HTTPS alterada. Clique em Testar conexão.');
+};
 $('api-save').onclick = async () => {
   if (apiBusy) return;
   const token = $('api-token-input').value.trim();
