@@ -117,3 +117,16 @@ button:disabled{opacity:.45;cursor:not-allowed}
  .orders-search-row .button{flex:1}
  .orders-pagination{flex-wrap:wrap}
 }
+
+#admin-api-panel[hidden]{display:none!important}
+.api-setup{display:flex;flex-direction:column;gap:12px;padding:14px 2px;text-align:left}
+.api-setup h2{font-size:24px;color:#232a36;margin:0}
+.api-setup p{font-size:14px;color:#687281;margin:0 0 7px}
+.api-setup label{font-size:14px;font-weight:750;color:#343a43}
+.api-setup input{height:54px;border:1px solid #cbd3df;border-radius:12px;padding:0 15px;font-size:19px}
+.api-setup input:focus{outline:2px solid #a7191f;outline-offset:1px}
+.api-setup .button.primary{width:100%;max-width:460px}
+.api-status-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px;border:1px solid #e3e7ec;border-radius:12px;background:#f9fafb}
+.api-status-row strong{color:#28313c;font-size:14px}
+.api-status-row .button{white-space:nowrap}
+@media(max-width:720px){.admin-tabs{flex-wrap:wrap}.api-status-row{flex-wrap:wrap}.api-status-row .button{width:100%}}
