@@ -2,7 +2,7 @@ name: Build Electron Windows EXE
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'cursor/**']
   workflow_dispatch:
 
 permissions:

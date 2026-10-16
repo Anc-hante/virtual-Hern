@@ -1,0 +1,66 @@
+{
+  "customer": {
+    "id": "01450747221",
+    "codigo": "12678"
+  },
+  "orders": [
+    {
+      "id": "1000018742",
+      "id_cliente": "01450747221",
+      "id_transacao": "1000018742",
+      "codigo": null,
+      "status": "recebido",
+      "confirmado": true,
+      "cancelado": false,
+      "integrado": false,
+      "internalizado": false,
+      "valor_total": 159.99,
+      "data": "2026-10-15T20:31:21"
+    },
+    {
+      "id": "1000018740",
+      "id_cliente": "01450747221",
+      "id_transacao": "1000018740",
+      "codigo": null,
+      "status": "cancelado",
+      "confirmado": true,
+      "cancelado": true,
+      "integrado": false,
+      "internalizado": false,
+      "valor_total": 159.99,
+      "data": "2026-10-15T19:30:17"
+    },
+    {
+      "id": "1000018735",
+      "id_cliente": "01450747221",
+      "id_transacao": "1000018735",
+      "codigo": "1960009485",
+      "status": "em_separacao",
+      "confirmado": true,
+      "cancelado": true,
+      "integrado": false,
+      "internalizado": true,
+      "valor_total": 159.99,
+      "data": "2026-10-15T12:11:19"
+    }
+  ],
+  "items": [
+    {
+      "id_pedido": "1000018742",
+      "id_produto": "7993",
+      "quantidade": 1,
+      "valor_unitario": 159.99,
+      "valor_total": 159.99,
+      "valor_embalagem": 159.99,
+      "preco_base": 192.05,
+      "json": "{\"id\":\"7993\",\"nome\":\"MARGARINA ELOGIATA BALDE-15KG 60%\",\"descricao\":[{\"descricao\":\"\"}]}"
+    }
+  ],
+  "payment": {
+    "id_pedido": "1000018742",
+    "id_forma_pagamento": "D",
+    "bandeira": "D",
+    "valor": 159.99,
+    "status": "nao_pago"
+  }
+}

@@ -262,7 +262,7 @@ $('agile-test').onclick = async () => {
     detail.textContent = source.ok
       ? ('Total informado: ' + (source.total || '?') +
         ' | Totem 12678: ' + (source.totem_found || 0) +
-        (source.resource === 'erp_pedidos'
+        (source.resource === 'pedidos' || source.resource === 'erp_pedidos'
           ? (' | Cancelados: ' + (source.cancelled || 0) +
             ' | Sem confirmação: ' + (source.awaiting_verification || 0))
           : '') +

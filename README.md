@@ -23,11 +23,12 @@ sem hospedar o navegador dentro do WPF/WebView2.
 - Antes de adicionar o primeiro produto, solicita identificação do cliente e,
   quando necessário, nome e telefone. Mantém um CSV local de contingência.
 - Tela de compra concluída com agradecimento, confetes e aviso para aguardar a impressão.
-- Consulta a **API Agile diretamente a cada 10 segundos** (com espera em HTTP 429),
-  identifica pedidos do cliente 12678 e imprime o comprovante não fiscal na ELGIN i8.
+- Consulta a **API Agile diretamente a cada 3 segundos** (um único ciclo, com espera em HTTP 429),
+  resolve o cliente 12678 para o `id_cliente` Agile e imprime o comprovante não fiscal na ELGIN i8
+  quando o pedido fica confirmado, mesmo antes do WinThor.
 - Aceita o identificador/transação Agile quando o NUMPED WinThor ainda não existe.
-  Pedidos cancelados/rascunhos não são impressos; a primeira leitura não imprime
-  automaticamente pedidos históricos.
+  Se os itens ainda não vierem, imprime só o total. Carrinho, rascunho e cancelado não são impressos;
+  a primeira leitura não imprime automaticamente pedidos históricos.
 - Mantém histórico local para impedir impressões duplicadas e permitir reimpressão no admin.
 - Permite impressão de teste e seleção de impressora após autenticação administrativa.
 - **Não faz reset por inatividade** e **não atualiza a página por timer**.

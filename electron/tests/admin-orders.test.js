@@ -12,7 +12,8 @@ test('admin searches directly in Agile and reprints from local storage only', ()
   const main = read('main.js');
   assert.match(main, /case 'admin:orders':\s*\{\s*if \(screen !== 'printers'\)/);
   assert.match(main, /case 'admin:reprint':\s*\{\s*if \(screen !== 'printers'\)/);
-  assert.match(main, /agile\.list\('erp_pedidos',/);
+  assert.match(main, /agile\.recentOrders\(/);
+  assert.match(main, /agile\.orderById\(/);
   assert.match(main, /agileHistory\.history\(/);
   assert.match(main, /agilePrint\.printOrder\(fresh, site\.webContents, \{ reprint:true \}\)/);
   assert.match(main, /new agilePrint\.AgilePrintWorker\(site\.webContents,\s*\{/);

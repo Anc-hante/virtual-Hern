@@ -1,23 +1,59 @@
 'use strict';
 // Standalone Agile => Windows printer workflow. Does not call HernandesDash.
+const fs = require('node:fs');
+const path = require('node:path');
 const agile = require('./agile');
 const ledger = require('./agile-history');
 const printer = require('./printer');
 const storage = require('./storage');
+
+const POLL_MS = 3000;
+const SEEN_LIMIT = 500;
+const LOG_MAX = 128 * 1024;
 
 function clean(value) {
   return String(value == null ? '' : value).replace(/[\r\n\t]+/g, ' ').trim();
 }
 function money(input) {
   const source = clean(input);
+  if (!source) return '';
   const raw = source.includes(',') ? source.replace(/\./g, '').replace(',', '.') : source;
-  const amount = Number(raw) || 0;
-  return amount.toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const amount = Number(raw);
+  if (!Number.isFinite(amount)) return '';
+  return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function nextDelay(failures) {
+  const step = Math.min(5, Math.max(1, Number(failures) || 1));
+  return Math.min(60000, POLL_MS * 2 ** step);
+}
+function scrub(message) {
+  return clean(message)
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redigido]')
+    .replace(/client_secret["']?\s*[:=]\s*\S+/gi, 'client_secret=[redigido]')
+    .slice(0, 240);
+}
+function monitorLog(message) {
+  const line = scrub(message);
+  if (!line) return;
+  try {
+    storage.ensureFolder();
+    const file = path.join(storage.folder, 'agile-monitor.log');
+    try {
+      if (fs.statSync(file).size >= LOG_MAX) {
+        const previous = file + '.1';
+        fs.rmSync(previous, { force: true });
+        fs.renameSync(file, previous);
+      }
+    } catch (_) { /* first write, or a rotate race, must not stop printing */ }
+    fs.appendFileSync(file, new Date().toISOString() + ' ' + line + '\n');
+  } catch (_) { /* logging is best-effort */ }
 }
 function receipt(order, items) {
   if (!order?.agile_id) throw new Error('Pedido sem ID Agile confirmado.');
-  if (!Array.isArray(items) || !items.length) {
-    throw new Error('O Agile ainda nao disponibilizou produtos deste pedido.');
+  const list = Array.isArray(items) ? items.filter(Boolean) : [];
+  const total = money(order.amount);
+  if (!list.length && !total) {
+    throw new Error('Pedido sem itens e sem total informado pelo Agile.');
   }
   const width = 40;
   const line = value => clean(value).slice(0, width);
@@ -39,20 +75,43 @@ function receipt(order, items) {
     lines.push('TRANSACAO AGILE: ' + line(order.transaction));
   }
   if (order.created_at) lines.push('DATA: ' + line(order.created_at));
-  lines.push('CLIENTE WINTHOR: 12678', '-'.repeat(width), 'PRODUTOS DO PEDIDO', '-'.repeat(width));
-  for (const item of items.slice(0, 100)) {
-    lines.push(line([item.product_id, item.product_name].filter(Boolean).join(' ')));
-    lines.push(line('Qtd: ' + (item.quantity || '?') + ' x R$ ' + money(item.price)));
-    if (item.value) lines.push(line('  Total: R$ ' + money(item.value)));
+  lines.push('CLIENTE WINTHOR: 12678', '-'.repeat(width));
+  if (list.length) {
+    lines.push('PRODUTOS DO PEDIDO', '-'.repeat(width));
+    for (const item of list.slice(0, 100)) {
+      const label = [item.product_id, item.product_name].filter(Boolean).join(' ');
+      if (label) lines.push(line(label));
+      const quantity = clean(item.quantity);
+      const price = money(item.price);
+      const value = money(item.value);
+      if (quantity && price) lines.push(line('Qtd: ' + quantity + ' x R$ ' + price));
+      else if (quantity) lines.push(line('Qtd: ' + quantity));
+      else if (price) lines.push(line('Valor un.: R$ ' + price));
+      if (value) lines.push(line('  Total: R$ ' + value));
+    }
+  } else {
+    lines.push('ITENS INDISPONIVEIS NO AGILE');
   }
-  lines.push('-'.repeat(width), 'TOTAL DO PEDIDO: R$ ' + money(order.amount),
-    '='.repeat(width), 'OBRIGADO PELA SUA COMPRA!',
+  if (order.payment_label) lines.push('PAGAMENTO: ' + line(order.payment_label));
+  lines.push('-'.repeat(width));
+  if (total) lines.push('TOTAL DO PEDIDO: R$ ' + total);
+  lines.push('='.repeat(width), 'OBRIGADO PELA SUA COMPRA!',
     'CADASTRE-SE NO GRUPO HERNANDES',
     'APONTE A CAMERA PARA O QR CODE', '');
   return lines.join('\n');
 }
 function isCancelled(order) {
   return !!order?.cancelled || /cancel|rejeitad|estornad|excluid/i.test(order?.status || '');
+}
+async function paymentLabel(order) {
+  const payments = await agile.paymentsForOrder(order);
+  const payment = payments.find(row =>
+    row && (row.valor != null && row.valor !== '' || row.id_forma_pagamento || row.bandeira)
+  );
+  if (!payment) return '';
+  const forma = clean(payment.id_forma_pagamento || payment.bandeira);
+  const valor = money(payment.valor);
+  return [forma, valor ? 'R$ ' + valor : ''].filter(Boolean).join(' ');
 }
 async function printOrder(order, contents, { reprint = false } = {}) {
   if (!order || !order.agile_id) throw new Error('Pedido Agile invalido.');
@@ -66,24 +125,26 @@ async function printOrder(order, contents, { reprint = false } = {}) {
   if (!available.some(p => p.name === chosen)) {
     throw new Error('Impressora nao encontrada no Windows: ' + chosen);
   }
-  const items = await agile.itemsForOrder(order);
-  if (!items.length) {
-    throw new Error('Itens ainda indisponiveis no Agile: nao e seguro imprimir cupom incompleto.');
-  }
+  let items = [];
+  try { items = await agile.itemsForOrder(order); } catch (_) { items = []; }
+  let label = '';
+  try { label = await paymentLabel(order); } catch (_) { label = ''; }
+  const printable = label ? { ...order, payment_label: label } : order;
+  const body = receipt(printable, items);
   const previous = ledger.get(order.agile_id);
   if (!reprint && previous?.print_count > 0)
-    return { printed:false, duplicate:true };
-  ledger.update(order, { print_status:'claimed' });
+    return { printed: false, duplicate: true };
+  ledger.update(order, { print_status: 'claimed' });
   try {
-    await printer.printReceipt(chosen, receipt(order, items));
+    await printer.printReceipt(chosen, body);
     const record = ledger.update(order, {
-      print_status:'printed', print_count:(previous?.print_count || 0) + 1,
-      last_printed_at:new Date().toISOString(), last_error:''
+      print_status: 'printed', print_count: (previous?.print_count || 0) + 1,
+      last_printed_at: new Date().toISOString(), last_error: ''
     });
-    return { printed:true, order:record };
-  } catch (e) {
-    ledger.update(order, { print_status:'failed', last_error:e.message });
-    throw e;
+    return { printed: true, order: record };
+  } catch (error) {
+    ledger.update(order, { print_status: 'failed', last_error: error.message });
+    throw error;
   }
 }
 // A checkout signal comes from the ecommerce's real order confirmation.
@@ -96,14 +157,10 @@ function matchCheckout(orders, pending) {
       [order.agile_id, order.external_order_id, order.erp_order, order.transaction]
         .some(id => String(id || '') === hint)
     );
-    if (matched.length === 1) return { order:matched[0] };
+    if (matched.length === 1) return { order: matched[0] };
     if (matched.length > 1) {
-      return { reason:'Mais de um pedido Agile possui este identificador. Consulte o administrador.' };
+      return { reason: 'Mais de um pedido Agile possui este identificador. Consulte o administrador.' };
     }
-    // Some storefronts show a site order number different from Agile's
-    // ERP/internal number. Fall back only to a UNIQUE amount+time match.
-    // Never match by just a recent timestamp.
-
   }
 
   // When the popup contains no ID, correlate strictly by amount + time.
@@ -111,7 +168,7 @@ function matchCheckout(orders, pending) {
   const amount = Number(pending?.amount);
   const at = Date.parse(pending?.at || '');
   if (!Number.isFinite(at)) {
-    return { reason:'Aguardando vincular o atendimento ao pedido Agile.' };
+    return { reason: 'Aguardando vincular o atendimento ao pedido Agile.' };
   }
   const inWindow = live.filter(order => {
     const created = Date.parse(order.created_at || '');
@@ -123,21 +180,21 @@ function matchCheckout(orders, pending) {
     const amounts = inWindow.filter(order => {
       const source = String(order.amount || '');
       const normalized = source.includes(',')
-        ? source.replace(/\./g,'').replace(',','.')
+        ? source.replace(/\./g, '').replace(',', '.')
         : source;
       const number = Number(normalized);
       return Number.isFinite(number) && Math.abs(number - amount) < 0.005;
     });
-    if (amounts.length === 1) return { order:amounts[0] };
+    if (amounts.length === 1) return { order: amounts[0] };
     if (amounts.length > 1) {
-      return { reason:'Mais de um pedido Agile tem o mesmo valor; aguardando identificacao unica.' };
+      return { reason: 'Mais de um pedido Agile tem o mesmo valor; aguardando identificacao unica.' };
     }
   }
   // The store sometimes omits ID and amount in the success popup. A SINGLE
   // new order on this dedicated WinThor-12678 totem in a tight time window
   // is enough to release the thank-you page after the receipt is printed.
-  if (inWindow.length === 1) return { order:inWindow[0] };
-  return { reason:inWindow.length > 1
+  if (inWindow.length === 1) return { order: inWindow[0] };
+  return { reason: inWindow.length > 1
     ? 'Ha multiplos pedidos Agile simultaneos; aguardando referencia especifica.'
     : 'Aguardando o pedido aparecer no Agile.' };
 }
@@ -156,20 +213,97 @@ class AgilePrintWorker {
     this.contents = contents;
     this.timer = null;
     this.busy = false;
+    this.printing = false;
+    this.loopStarted = false;
+    this.stopped = false;
+    this.loopBusy = false;
+    this.failures = 0;
+    this.lastNote = '';
     this.cooldownUntil = 0;
+    this.seen = new Map();
     this.onStatus = hooks.onStatus || (() => {});
     this.onPrinted = hooks.onPrinted || (() => {});
   }
+  signature(order) {
+    return [
+      order.status,
+      order.confirmado === true ? '1' : order.confirmado === false ? '0' : '',
+      order.amount,
+      order.erp_order,
+      order.transaction,
+      order.cancelled ? '1' : '0',
+      order.print_eligible ? '1' : '0'
+    ].join('|');
+  }
+  remember(id, signature) {
+    const key = String(id || '');
+    if (!key) return;
+    if (this.seen.has(key)) this.seen.delete(key);
+    this.seen.set(key, signature);
+    while (this.seen.size > SEEN_LIMIT) {
+      const oldest = this.seen.keys().next().value;
+      this.seen.delete(oldest);
+    }
+  }
+  note(message) {
+    const line = scrub(message);
+    if (!line || line === this.lastNote) return;
+    this.lastNote = line;
+    monitorLog(line);
+    console.warn('[Agile] Monitor de cupons:', line);
+  }
   start() {
-    if (this.timer) return;
-    // Poll Agile continuously, independent of the checkout's browser events.
-    // One query per 10 seconds (not an API request every second).
-    this.timer = setInterval(() => void this.tick(), 10000);
-    void this.tick();
+    if (this.loopStarted) return;
+    this.stopped = false;
+    this.loopStarted = true;
+    this.schedule(0);
   }
   stop() {
-    clearInterval(this.timer);
+    this.stopped = true;
+    this.loopStarted = false;
+    if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+  }
+  schedule(delay) {
+    if (this.stopped) return;
+    if (this.timer) clearTimeout(this.timer);
+    const wait = Math.max(0, Math.min(60000, Number(delay) || POLL_MS));
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      Promise.resolve()
+        .then(() => this.runLoop())
+        .catch(error => {
+          this.note(error?.message || error);
+          if (!this.stopped) this.schedule(nextDelay((this.failures || 0) + 1));
+        });
+    }, wait);
+  }
+  async runLoop() {
+    if (this.stopped || this.loopBusy) return;
+    this.loopBusy = true;
+    let delay = POLL_MS;
+    try {
+      if (this.printing) {
+        delay = 500;
+      } else if (Date.now() < this.cooldownUntil) {
+        delay = Math.min(60000, Math.max(500, this.cooldownUntil - Date.now()));
+      } else {
+        await this.tick();
+        if (Date.now() < this.cooldownUntil) {
+          delay = Math.min(60000, Math.max(500, this.cooldownUntil - Date.now()));
+        } else {
+          this.failures = 0;
+          delay = POLL_MS;
+        }
+      }
+    } catch (error) {
+      this.failures = Math.min(5, (this.failures || 0) + 1);
+      delay = nextDelay(this.failures);
+      this.note(error?.message || error);
+    } finally {
+      this.loopBusy = false;
+      if (!this.stopped) this.schedule(delay);
+    }
   }
   beginCheckout(data = {}) {
     const existing = ledger.pendingCheckout();
@@ -179,15 +313,14 @@ class AgilePrintWorker {
       return existing;
     }
     const pending = ledger.setPendingCheckout({
-      at:new Date().toISOString(),
+      at: new Date().toISOString(),
       session,
-      hint:String(data.order_number || '').trim(),
-      amount:data.amount
+      hint: String(data.order_number || '').trim(),
+      amount: data.amount
     });
-    // Do not circumvent an HTTP 429. Query on the next allowed cycle.
     this.onStatus({
-      state:'waiting',
-      message:'Procurando a transacao Agile e os produtos do pedido…',
+      state: 'waiting',
+      message: 'Procurando a transacao Agile e os produtos do pedido…',
       session
     });
     void this.tick();
@@ -195,12 +328,12 @@ class AgilePrintWorker {
   }
   retryCheckout() {
     this.onStatus({
-      state:'waiting', message:'Conferindo o pedido diretamente no Agile…'
+      state: 'waiting', message: 'Conferindo o pedido diretamente no Agile…'
     });
     void this.tick();
   }
   async tick() {
-    if (this.busy || Date.now() < this.cooldownUntil) return;
+    if (this.busy || this.printing || this.stopped || Date.now() < this.cooldownUntil) return;
     this.busy = true;
     const pending = ledger.pendingCheckout();
     try {
@@ -208,31 +341,43 @@ class AgilePrintWorker {
         if (pending) throw new Error('Configure Client ID e Client Secret do Agile no admin.');
         return;
       }
-      const page = await agile.list('erp_pedidos', {
-        codigo_cliente_erp:agile.CUSTOMER_CODE,
-        sort:'data_pedido',
-        order:'DESC'
-      }, 1, 25);
-      const orders = page.data.map(row =>
-        agile.safeTotemOrder(row, 'erp_pedidos')).filter(Boolean);
+      const page = await agile.recentOrders();
+      const orders = page.orders || [];
       const bootstrap = !ledger.monitorInitialized();
       const current = Date.now();
 
-      // First contact creates a safe baseline, not 25 old paper receipts.
-      // Every subsequently discovered recent order is queued locally.
+      // First contact creates a safe baseline, not a stack of old receipts.
+      // A cart seen after that baseline is watched until confirmado=true.
       for (const order of orders) {
         const previous = ledger.get(order.agile_id);
-        if (order.cancelled) {
-          ledger.update(order, { print_status:'cancelled', auto_pending:false });
-        } else if (!previous) {
-          const queued = !bootstrap && agile.printEligibility(order) &&
-            isRecentOrder(order, current);
-          ledger.update(order, {
-            print_status:queued ? 'pending' : 'available',
-            auto_pending:queued
-          });
+        const signature = this.signature(order);
+        if (!previous) {
+          if (order.cancelled) {
+            ledger.update(order, { print_status: 'cancelled', auto_pending: false });
+          } else if (bootstrap || !isRecentOrder(order, current)) {
+            ledger.update(order, { print_status: 'historical', auto_pending: false });
+          } else if (agile.printEligibility(order)) {
+            ledger.update(order, { print_status: 'pending', auto_pending: true });
+          } else {
+            ledger.update(order, { print_status: 'watching', auto_pending: false });
+          }
+          this.remember(order.agile_id, signature);
+        } else if (order.cancelled) {
+          ledger.update(order, { print_status: 'cancelled', auto_pending: false });
+          this.remember(order.agile_id, signature);
+        } else if (
+          previous.print_status === 'watching' &&
+          agile.printEligibility(order) &&
+          isRecentOrder(order, current) &&
+          (previous.print_count || 0) === 0
+        ) {
+          ledger.update(order, { print_status: 'pending', auto_pending: true });
+          this.remember(order.agile_id, signature);
+        } else if (this.seen.get(order.agile_id) === signature) {
+          continue;
         } else {
           ledger.update(order);
+          this.remember(order.agile_id, signature);
         }
       }
       if (bootstrap) ledger.initializeMonitor();
@@ -243,23 +388,21 @@ class AgilePrintWorker {
         if (found.order && agile.printEligibility(found.order)) {
           linked = found.order;
           if (ledger.get(linked.agile_id)?.print_count > 0) {
-            // The continuous watcher may already have printed before the
-            // ecommerce displayed its success popup. Never send a 2nd copy.
             ledger.clearPendingCheckout();
             this.onPrinted({
-              session:pending.session, order_id:linked.agile_id,
-              duplicate:true
+              session: pending.session, order_id: linked.agile_id,
+              duplicate: true
             });
             return;
           }
-          ledger.update(linked, { print_status:'pending', auto_pending:true });
+          ledger.update(linked, { print_status: 'pending', auto_pending: true });
         } else {
           this.onStatus({
-            state:'waiting',
-            message:found.order
+            state: 'waiting',
+            message: found.order
               ? 'Pedido Agile em rascunho ou cancelado. Aguardando venda efetiva.'
               : found.reason,
-            session:pending.session
+            session: pending.session
           });
         }
       }
@@ -268,11 +411,9 @@ class AgilePrintWorker {
         agile.printEligibility(order) &&
         ledger.get(order.agile_id)?.auto_pending === true &&
         (ledger.get(order.agile_id)?.print_count || 0) === 0 &&
-        // "claimed" can mean Windows accepted the print before a crash.
-        // Never reprint it automatically without operator review.
         ledger.get(order.agile_id)?.print_status !== 'claimed'
       );
-      const chosen = linked && candidates.some(x => x.agile_id === linked.agile_id)
+      const chosen = linked && candidates.some(order => order.agile_id === linked.agile_id)
         ? linked
         : candidates[candidates.length - 1];
       if (!chosen) return;
@@ -282,49 +423,56 @@ class AgilePrintWorker {
       }
       const prior = ledger.get(chosen.agile_id);
       if (prior?.print_count > 0) {
-        ledger.update(chosen, { auto_pending:false });
+        ledger.update(chosen, { auto_pending: false });
         return;
       }
 
       this.onStatus({
-        state:'printing',
-        message:'Pedido Agile localizado. Enviando cupom para o Windows…',
+        state: 'printing',
+        message: 'Pedido Agile localizado. Enviando cupom para o Windows…',
         session: linked?.agile_id === chosen.agile_id ? pending?.session : ''
       });
+      this.printing = true;
       const outcome = await printOrder(chosen, this.contents);
+      this.printing = false;
       if (!outcome.printed && !outcome.duplicate) {
         throw new Error('Nao foi possivel enviar o cupom ao Windows.');
       }
-      ledger.update(chosen, { auto_pending:false });
+      ledger.update(chosen, { auto_pending: false });
+      if (outcome.printed) {
+        this.note('Cupom enviado para a impressora. Pedido ' + chosen.agile_id);
+      }
       if (linked?.agile_id === chosen.agile_id && pending) {
         ledger.clearPendingCheckout();
         this.onPrinted({
-          session:pending.session, order_id:chosen.agile_id,
-          duplicate:!!outcome.duplicate
+          session: pending.session, order_id: chosen.agile_id,
+          duplicate: !!outcome.duplicate
         });
       }
     } catch (error) {
       const msg = String(error.message || 'Falha ao consultar o Agile.');
       const match = /(?:tente em|Nova consulta em|limite atingido[^\d]*)(\d+)\s*s/i.exec(msg);
-      const delay = /429/.test(msg)
-        ? Math.max(15000, Math.min(300000,
-          Number(match?.[1] || 60) * 1000))
-        : /Itens ainda indisponiveis|produtos deste pedido/.test(msg)
-          ? 20000 : 10000;
+      const retryAfter = /429/.test(msg) ? Number(match?.[1]) : NaN;
+      this.failures = Math.min(5, (this.failures || 0) + 1);
+      const delay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(60000, Math.max(1000, retryAfter * 1000))
+        : nextDelay(this.failures);
       this.cooldownUntil = Date.now() + delay;
       if (pending) {
         this.onStatus({
-          state:'waiting',
-          message:/Itens ainda indisponiveis/.test(msg)
-            ? 'Pedido Agile localizado; aguardando lista completa de produtos.'
-            : msg,
-          session:pending.session
+          state: 'waiting',
+          message: msg,
+          session: pending.session
         });
       }
-      console.warn('[Agile] Monitor de cupons:', msg);
+      this.note(msg);
     } finally {
+      this.printing = false;
       this.busy = false;
     }
   }
 }
-module.exports = { receipt, printOrder, AgilePrintWorker, isCancelled, matchCheckout, isRecentOrder };
+module.exports = {
+  receipt, printOrder, AgilePrintWorker, isCancelled, matchCheckout, isRecentOrder,
+  POLL_MS, SEEN_LIMIT, nextDelay, monitorLog
+};
