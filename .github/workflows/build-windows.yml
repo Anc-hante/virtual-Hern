@@ -6,16 +6,30 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+# One build per branch at a time. Do not cancel: a cancelled main build
+# would skip the release and the dist commit.
+concurrency:
+  group: build-electron-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 35
+    # A dist update pushes with [skip ci]. Skip the job as well so a token
+    # that still triggers workflows cannot build and commit again.
+    if: >-
+      ${{ !contains(github.event.head_commit.message, '[skip ci]') &&
+          !contains(github.event.head_commit.message, '[ci skip]') }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 1
 
       - name: Setup Node.js LTS
         uses: actions/setup-node@v4
@@ -81,3 +95,48 @@ jobs:
           name: HernandesCheckout-Electron-Windows
           path: dist/HernandesCheckout.exe
           if-no-files-found: error
+
+      - name: Publish totem-latest release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $asset = "dist/HernandesCheckout.exe"
+          $notes = "Windows totem build from $($env:GITHUB_SHA). https://github.com/Anc-hante/virtual-Hern/releases/download/totem-latest/HernandesCheckout.exe"
+          gh release view totem-latest --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload totem-latest $asset --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed to overwrite totem-latest asset" }
+            gh release edit totem-latest --prerelease --notes $notes
+            if ($LASTEXITCODE -ne 0) { throw "Failed to update totem-latest release" }
+          } else {
+            gh release create totem-latest $asset --prerelease --title "Totem latest" --notes $notes --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create totem-latest release" }
+          }
+
+      - name: Commit executable on main when under 100MB
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $exe = Get-Item "dist/HernandesCheckout.exe"
+          $limit = 100MB
+          Write-Host "HernandesCheckout.exe size: $($exe.Length) bytes (limit $limit)"
+          if ($exe.Length -ge $limit) {
+            Write-Host "SKIP dist commit: file is not under 100MB."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "dist/HernandesCheckout.exe"
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "dist/HernandesCheckout.exe unchanged; nothing to commit."
+            exit 0
+          }
+          git commit -m "Update dist/HernandesCheckout.exe [skip ci]"
+          if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) { throw "git push of dist exe failed" }

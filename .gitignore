@@ -4,7 +4,8 @@ bin/
 obj/
 **/bin/
 **/obj/
-dist/
+dist/*
+!dist/HernandesCheckout.exe
 
 # Legacy Python branch/worktree artifacts
 .venv/

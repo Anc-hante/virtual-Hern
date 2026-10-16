@@ -52,7 +52,9 @@ npm run build
 
 O executável portátil fica em `dist\HernandesCheckout.exe`. Ele inclui o
 Chromium do Electron e **não depende de Node.js nem do .NET instalado no computador**
-para rodar. O `GitHub Actions` também disponibiliza o mesmo EXE como artefato
+para rodar. Cada push na `main` publica o mesmo arquivo em
+https://github.com/Anc-hante/virtual-Hern/releases/download/totem-latest/HernandesCheckout.exe
+e o grava em `dist/HernandesCheckout.exe`. O Actions também gera o artefato
 `HernandesCheckout-Electron-Windows`.
 
 ```bat

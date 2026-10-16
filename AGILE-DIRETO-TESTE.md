@@ -116,8 +116,11 @@ vazio). Se essa lista falhar, o cupom leva so o total. Nao inventar itens.
 
 Repositorio completo: https://github.com/Anc-hante/virtual-Hern/archive/refs/heads/main.zip
 
-Executavel: GitHub Actions -> ultimo build verde -> Artifacts ->
-`HernandesCheckout-Electron-Windows`.
+Executavel (link estavel, atualizado a cada push na `main`):
+https://github.com/Anc-hante/virtual-Hern/releases/download/totem-latest/HernandesCheckout.exe
+
+O mesmo arquivo fica em `dist/HernandesCheckout.exe` na branch `main`.
+O artefato do Actions `HernandesCheckout-Electron-Windows` continua sendo gerado.
 
 ## Para continuar em outro chat
 
