@@ -64,6 +64,26 @@ dist\HernandesCheckout.exe
 A antiga implementação WPF permanece em `src/HernandesCheckout/*.xaml*`
 para referência/rollback, mas **não é mais compilada pelo build_windows.bat**.
 
+## Iniciar com o Windows
+
+Com `dist\HernandesCheckout.exe` já gerado, execute na pasta do repositório:
+
+```bat
+instalar_inicio_automatico.bat
+```
+
+O script cria o atalho `HernandesCheckout.lnk` na pasta Inicializar do usuário
+atual (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`). O atalho
+aponta para o executável ao lado do script, usa `dist` como pasta de trabalho
+e abre a janela maximizada. O totem passa a iniciar sozinho no logon desse
+usuário, ao ligar ou reiniciar o Windows.
+
+Para desfazer:
+
+```bat
+instalar_inicio_automatico.bat remover
+```
+
 ## Regras de atendimento
 
 A página é carregada na abertura. Navegações provocadas por cliques no e-commerce
