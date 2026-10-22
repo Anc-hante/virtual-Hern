@@ -84,6 +84,8 @@ Para desfazer:
 instalar_inicio_automatico.bat remover
 ```
 
+O teclado de toque do Windows, mesmo sem modo tablet, é ligado por `instalar_teclado_virtual.bat` (pede administrador; `remover` apaga o registro, o atalho do TabTip na Inicializar e devolve o serviço TabletInputService ao início manual).
+
 ## Regras de atendimento
 
 A página é carregada na abertura. Navegações provocadas por cliques no e-commerce
