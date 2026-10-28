@@ -239,3 +239,92 @@ test('always-on Agile monitor uses one 3s timeout chain and never uses Hernandes
   assert.doesNotMatch(main,/api\.sendEvent\(/);
   assert.doesNotMatch(worker,/\/printer\/claim|new PrintWorker/);
 });
+
+
+test('checkout iniciado em carrinho antigo associa somente pedido observado e com mesmo valor', () => {
+  const at = new Date().toISOString();
+  const oldCart = order('LONG-CART', {
+    amount:'25.50',created_at:new Date(Date.now() - 35 * 60 * 1000).toISOString()
+  });
+  const unrelated = order('OTHER-CART', {
+    amount:'87.00',created_at:new Date(Date.now() - 18 * 60 * 1000).toISOString()
+  });
+  const pending = { hint:'', amount:25.5, at };
+  // An unobserved older order can NEVER be guessed just from the amount.
+  assert.equal(matchCheckout([oldCart], pending).order, undefined);
+  assert.equal(matchCheckout([oldCart, unrelated], pending, {
+    observedIds:new Set(['LONG-CART'])
+  }).order?.agile_id,'LONG-CART');
+  assert.equal(matchCheckout([oldCart, order('SECOND', {
+    created_at:new Date(Date.now() - 25 * 60 * 1000).toISOString()
+  })], pending, {
+    observedIds:new Set(['LONG-CART','SECOND'])
+  }).order,undefined);
+});
+
+test('checkout sem valor so casa transicao unica confirmada, nao pedido antigo aleatorio', () => {
+  const at = new Date().toISOString();
+  const cart = order('WATCHED-OLD',{
+    created_at:new Date(Date.now() - 25 * 60 * 1000).toISOString()
+  });
+  const pending = {hint:'',amount:null,at};
+  assert.equal(matchCheckout([cart],pending).order,undefined);
+  assert.equal(matchCheckout([cart],pending,{
+    confirmedIds:new Set(['WATCHED-OLD'])
+  }).order?.agile_id,'WATCHED-OLD');
+  assert.equal(matchCheckout([cart,order('WATCHED-2',{
+    created_at:new Date(Date.now() - 20 * 60 * 1000).toISOString()
+  })],pending,{
+    confirmedIds:new Set(['WATCHED-OLD','WATCHED-2'])
+  }).order,undefined);
+});
+
+test('checkout pendente nao imprime pedido Agile diferente antes de encontrar correspondencia', async () => {
+  const originals = {
+    configured:agile.configured,recent:agile.recentOrders,
+    selected:storage.selectedPrinter,installed:printer.installedPrinters,
+    print:printer.printReceipt,get:history.get,update:history.update,
+    pending:history.pendingCheckout,initialized:history.monitorInitialized,
+    initialize:history.initializeMonitor
+  };
+  const rows = new Map();
+  let printed = 0;
+  let requestedLimit = 0;
+  const unrelated = order('UNRELATED',{
+    created_at:new Date(Date.now() - 20 * 60 * 1000).toISOString()
+  });
+  try {
+    agile.configured=()=>true;
+    agile.recentOrders=async limit => { requestedLimit=limit; return {orders:[unrelated]}; };
+    storage.selectedPrinter=()=> 'ELGIN';
+    printer.installedPrinters=async()=>[{name:'ELGIN'}];
+    printer.printReceipt=async()=>{printed++;};
+    history.get=id=>rows.get(id)||null;
+    history.update=(data,changes={})=>{
+      const record={...(rows.get(data.agile_id)||{}),...data,...changes};
+      rows.set(data.agile_id,record);
+      return record;
+    };
+    history.pendingCheckout=()=>({
+      hint:'UNKNOWN-ID',amount:99.5,at:new Date().toISOString(),session:'CHECKOUT-1'
+    });
+    history.monitorInitialized=()=>true;
+    history.initializeMonitor=()=>{};
+    const worker=new AgilePrintWorker({});
+    await worker.tick();
+    assert.equal(requestedLimit,25,'checkout should inspect more than first 5 orders');
+    assert.equal(printed,0,'unrelated order must not be sent to Windows');
+    assert.equal(rows.get('UNRELATED').print_count || 0,0);
+  } finally {
+    agile.configured=originals.configured;
+    agile.recentOrders=originals.recent;
+    storage.selectedPrinter=originals.selected;
+    printer.installedPrinters=originals.installed;
+    printer.printReceipt=originals.print;
+    history.get=originals.get;
+    history.update=originals.update;
+    history.pendingCheckout=originals.pending;
+    history.monitorInitialized=originals.initialized;
+    history.initializeMonitor=originals.initialize;
+  }
+});
