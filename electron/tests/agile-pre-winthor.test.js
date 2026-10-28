@@ -364,3 +364,101 @@ test('printOrder does not require a product list when the Agile total is known',
     history.update = old.update;
   }
 });
+
+
+test('duplicated ERP code must select the CPF configured for the totem and filter orders by its Agile ID', async () => {
+  const oldFetch = global.fetch;
+  const oldLoad = storage.loadAgileCredentials;
+  const calls = [];
+  try {
+    storage.loadAgileCredentials = () => ({
+      client_id: 'unit-id', client_secret: 'unit-secret'
+    });
+    global.fetch = async url => {
+      const request = String(url);
+      calls.push(request);
+      if (request.endsWith('/api/usuario/login')) {
+        return ok({ Token: 'unit-jwt-valid-token', Expiration: 3600 });
+      }
+      if (request.includes('/integracao/clientes?')) {
+        return ok({ data: [
+          { codigo: '12678', id: '01450747221', cpf: '014.507.472-21' },
+          { codigo: '12678', id: '44444444444', cpf: '444.444.444-44' }
+        ], meta: { total: 2 } });
+      }
+      if (request.includes('/integracao/pedidos?')) {
+        return ok({ data: [
+          { id: 'OLD', codigo_cliente_erp: '12678', id_cliente: '01450747221',
+            confirmado: true, status: 'recebido' },
+          { id: 'CORRECT', codigo_cliente_erp: '12678', id_cliente: '44444444444',
+            confirmado: true, status: 'recebido' }
+        ], meta: { total: 2 } });
+      }
+      throw new Error('Unexpected resource in test.');
+    };
+    agile.resetSession();
+    const page = await agile.recentOrders();
+    const clientCalls = calls.filter(url => url.includes('/integracao/clientes?'));
+    assert.equal(clientCalls.length, 1);
+    const ordersUrl = calls.find(url => url.includes('/integracao/pedidos?'));
+    assert.match(ordersUrl, /id_cliente=44444444444/);
+    assert.deepEqual(page.orders.map(o => o.agile_id), ['CORRECT']);
+  } finally {
+    global.fetch = oldFetch;
+    storage.loadAgileCredentials = oldLoad;
+    agile.resetSession();
+  }
+});
+
+test('never fall back to the old CPF or guess when the new CPF is missing', async () => {
+  const oldFetch = global.fetch;
+  const oldLoad = storage.loadAgileCredentials;
+  const calls = [];
+  try {
+    storage.loadAgileCredentials = () => ({
+      client_id: 'unit-id', client_secret: 'unit-secret'
+    });
+    global.fetch = async url => {
+      const request = String(url);
+      calls.push(request);
+      if (request.endsWith('/api/usuario/login')) {
+        return ok({ Token: 'unit-jwt-valid-token', Expiration: 3600 });
+      }
+      return ok({ data: [
+        { codigo: '12678', id: '01450747221', cpf: '014.507.472-21' }
+      ], meta: { total: 1 } });
+    };
+    agile.resetSession();
+    await assert.rejects(() => agile.recentOrders(), /CPF configurado nao encontrado/);
+    assert.equal(calls.some(url => url.includes('/integracao/pedidos?')), false);
+  } finally {
+    global.fetch = oldFetch;
+    storage.loadAgileCredentials = oldLoad;
+    agile.resetSession();
+  }
+});
+
+test('ambiguous CPF in multiple Agile IDs is rejected instead of silently selecting one', async () => {
+  const oldFetch = global.fetch;
+  const oldLoad = storage.loadAgileCredentials;
+  try {
+    storage.loadAgileCredentials = () => ({
+      client_id: 'unit-id', client_secret: 'unit-secret'
+    });
+    global.fetch = async url => {
+      if (String(url).endsWith('/api/usuario/login')) {
+        return ok({ Token: 'unit-jwt-valid-token', Expiration: 3600 });
+      }
+      return ok({ data: [
+        { codigo: '12678', id: '111', cpf: '44444444444' },
+        { codigo: '12678', id: '222', cpf: '444.444.444-44' }
+      ], meta: { total: 2 } });
+    };
+    agile.resetSession();
+    await assert.rejects(() => agile.customerIdForTotem(), /cadastros duplicados com o CPF/);
+  } finally {
+    global.fetch = oldFetch;
+    storage.loadAgileCredentials = oldLoad;
+    agile.resetSession();
+  }
+});
