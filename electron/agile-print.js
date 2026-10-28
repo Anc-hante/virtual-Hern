@@ -149,11 +149,13 @@ async function printOrder(order, contents, { reprint = false } = {}) {
 }
 // A checkout signal comes from the ecommerce's real order confirmation.
 // No background printing of unrelated/historical orders from customer 12678.
-function matchCheckout(orders, pending) {
+// Orders may be created when the customer starts the cart, far before checkout.
+// Only orders already observed in the monitor qualify for a wider time window.
+function matchCheckout(orders, pending, { observedIds = new Set(), confirmedIds = new Set() } = {}) {
   const live = orders.filter(order => order && !isCancelled(order));
   const hint = String(pending?.hint || '').trim();
   if (hint) {
-    const matched = orders.filter(order => order).filter(order =>
+    const matched = live.filter(order =>
       [order.agile_id, order.external_order_id, order.erp_order, order.transaction]
         .some(id => String(id || '') === hint)
     );
@@ -163,40 +165,53 @@ function matchCheckout(orders, pending) {
     }
   }
 
-  // When the popup contains no ID, correlate strictly by amount + time.
-  // Never print a random recent order belonging to a shared WinThor customer.
-  const amount = Number(pending?.amount);
   const at = Date.parse(pending?.at || '');
   if (!Number.isFinite(at)) {
     return { reason: 'Aguardando vincular o atendimento ao pedido Agile.' };
   }
-  const inWindow = live.filter(order => {
-    const created = Date.parse(order.created_at || '');
+  const createdAt = order => Date.parse(order.created_at || '');
+  const within = (order, minutesBefore) => {
+    const created = createdAt(order);
     return Number.isFinite(created) &&
-      created >= at - 2 * 60 * 1000 &&
+      created >= at - minutesBefore * 60 * 1000 &&
       created <= at + 5 * 60 * 1000;
-  });
-  if (pending?.amount != null && Number.isFinite(amount)) {
-    const amounts = inWindow.filter(order => {
-      const source = String(order.amount || '');
-      const normalized = source.includes(',')
-        ? source.replace(/\./g, '').replace(',', '.')
-        : source;
-      const number = Number(normalized);
-      return Number.isFinite(number) && Math.abs(number - amount) < 0.005;
-    });
-    if (amounts.length === 1) return { order: amounts[0] };
-    if (amounts.length > 1) {
+  };
+  const amount = Number(pending?.amount);
+  const hasAmount = pending?.amount != null && Number.isFinite(amount);
+  const sameAmount = order => {
+    const source = String(order.amount ?? '');
+    const normalized = source.includes(',')
+      ? source.replace(/\./g, '').replace(',', '.') : source;
+    const number = Number(normalized);
+    return source.trim() !== '' && Number.isFinite(number) &&
+      Math.abs(number - amount) < 0.005;
+  };
+  if (hasAmount) {
+    const observed = live.filter(order =>
+      observedIds.has(String(order.agile_id)) && within(order, 120) && sameAmount(order)
+    );
+    if (observed.length === 1) return { order: observed[0] };
+    if (observed.length > 1) {
+      return { reason: 'Pedidos Agile observados com o mesmo valor. Aguardando identificador.' };
+    }
+    const fresh = live.filter(order => within(order, 2) && sameAmount(order));
+    if (fresh.length === 1) return { order: fresh[0] };
+    if (fresh.length > 1) {
       return { reason: 'Mais de um pedido Agile tem o mesmo valor; aguardando identificacao unica.' };
     }
   }
-  // The store sometimes omits ID and amount in the success popup. A SINGLE
-  // new order on this dedicated WinThor-12678 totem in a tight time window
-  // is enough to release the thank-you page after the receipt is printed.
-  if (inWindow.length === 1) return { order: inWindow[0] };
-  return { reason: inWindow.length > 1
+  const transitions = live.filter(order =>
+    confirmedIds.has(String(order.agile_id)) && within(order, 120)
+  );
+  if (!hasAmount && transitions.length === 1) return { order: transitions[0] };
+  if (!hasAmount && transitions.length > 1) {
+    return { reason: 'Mais de um pedido foi confirmado no Agile; aguardando identificador.' };
+  }
+  const fresh = live.filter(order => within(order, 2));
+  if (fresh.length === 1 && !hasAmount) return { order: fresh[0] };
+  return { reason: fresh.length > 1
     ? 'Ha multiplos pedidos Agile simultaneos; aguardando referencia especifica.'
-    : 'Aguardando o pedido aparecer no Agile.' };
+    : 'Aguardando o pedido confirmado aparecer entre os pedidos recentes do Agile.' };
 }
 
 function isRecentOrder(order, now = Date.now()) {
@@ -341,9 +356,11 @@ class AgilePrintWorker {
         if (pending) throw new Error('Configure Client ID e Client Secret do Agile no admin.');
         return;
       }
-      const page = await agile.recentOrders();
+      const page = await agile.recentOrders(pending ? 25 : 5);
       const orders = page.orders || [];
       const bootstrap = !ledger.monitorInitialized();
+      const observedIds = new Set();
+      const confirmedIds = new Set();
       const current = Date.now();
 
       // First contact creates a safe baseline, not a stack of old receipts.
@@ -351,6 +368,14 @@ class AgilePrintWorker {
       for (const order of orders) {
         const previous = ledger.get(order.agile_id);
         const signature = this.signature(order);
+        // Collect pre-update evidence for safe checkout correlation.
+        if (previous && (previous.print_status === 'watching' ||
+            previous.print_status === 'pending' || previous.auto_pending === true)) {
+          observedIds.add(String(order.agile_id));
+        }
+        if (previous?.print_status === 'watching' && agile.printEligibility(order)) {
+          confirmedIds.add(String(order.agile_id));
+        }
         if (!previous) {
           if (order.cancelled) {
             ledger.update(order, { print_status: 'cancelled', auto_pending: false });
@@ -384,7 +409,7 @@ class AgilePrintWorker {
 
       let linked = null;
       if (pending) {
-        const found = matchCheckout(orders, pending);
+        const found = matchCheckout(orders, pending, { observedIds, confirmedIds });
         if (found.order && agile.printEligibility(found.order)) {
           linked = found.order;
           if (ledger.get(linked.agile_id)?.print_count > 0) {
@@ -413,8 +438,9 @@ class AgilePrintWorker {
         (ledger.get(order.agile_id)?.print_count || 0) === 0 &&
         ledger.get(order.agile_id)?.print_status !== 'claimed'
       );
-      const chosen = linked && candidates.some(order => order.agile_id === linked.agile_id)
-        ? linked
+      // Active checkout must never print an unrelated new Agile order.
+      const chosen = pending
+        ? (linked && candidates.some(order => order.agile_id === linked.agile_id) ? linked : null)
         : candidates[candidates.length - 1];
       if (!chosen) return;
 
