@@ -5,6 +5,8 @@ const storage = require('./storage');
 
 const BASE = 'https://api-integracao.agileecommerce.com.br';
 const CUSTOMER_CODE = '12678';
+// Cadastro do totem no Agile. Ha dois clientes com o mesmo codigo ERP.
+const CUSTOMER_CPF = '44444444444';
 const RESOURCES = [
   'pedidos', 'pedidos_produtos', 'pedidos_pagamentos', 'clientes', 'produtos',
   'erp_pedidos', 'erp_pedidos_produtos'
@@ -187,10 +189,14 @@ function printEligibility(order) {
   return true;
 }
 function belongsToTotem(row, customerId) {
+  const expected = text(customerId);
+  // Para pedidos nativos, o id_cliente e a identidade escolhida pelo CPF.
+  // Codigo 12678 sozinho nao basta quando dois clientes compartilham o codigo.
+  const actualId = text(row.id_cliente);
+  if (expected && actualId) return actualId === expected;
   const code = text(value(row, ['codigo_cliente_erp', 'codcli', 'codcli_erp']));
   if (code) return code === CUSTOMER_CODE;
-  const expected = text(customerId);
-  return !!expected && text(row.id_cliente) === expected;
+  return false;
 }
 function parseAgileDate(raw) {
   const value = text(raw);
@@ -277,12 +283,44 @@ function recordFields(row) {
     .filter(key => !/nome|telefone|endereco|cpf|cnpj|email|documento|^ip$|razao|fantasia/i.test(key))
     .slice(0, 35);
 }
+function customerDocument(row) {
+  // O Agile pode devolver o CPF em campo proprio ou como ID do cliente.
+  // Nunca usar somente codigo ERP para desempatar registros duplicados.
+  const field = text(value(row, [
+    'cpf', 'cpf_cnpj', 'cpfcnpj', 'documento', 'numero_documento',
+    'numero_cpf', 'nr_cpf'
+  ]));
+  const doc = field || text(row?.id);
+  return doc.replace(/\D/g, '');
+}
 async function customerIdForTotem() {
   if (customerCache) return customerCache;
-  const page = await list('clientes', { codigo: CUSTOMER_CODE }, 1, 5);
-  const match = page.data.find(row => text(row?.codigo) === CUSTOMER_CODE && text(row?.id));
-  if (!match) throw new Error('Cliente ERP ' + CUSTOMER_CODE + ' nao encontrado no Agile.');
-  customerCache = text(match.id);
+  const encontrados = new Set();
+  const limite = MAX_PAGE_SIZE;
+  const maxPaginas = 5;
+  for (let numeroPagina = 1; numeroPagina <= maxPaginas; numeroPagina += 1) {
+    const pagina = await list('clientes', { codigo: CUSTOMER_CODE }, numeroPagina, limite);
+    for (const row of pagina.data) {
+      if (text(row?.codigo) !== CUSTOMER_CODE) continue;
+      if (customerDocument(row) !== CUSTOMER_CPF) continue;
+      const id = text(row?.id);
+      if (id) encontrados.add(id);
+    }
+    if (encontrados.size > 1) {
+      throw new Error('O Agile retornou cadastros duplicados com o CPF do totem. Verifique o cadastro.');
+    }
+    const total = Number(pagina.meta?.total);
+    const temMais = pagina.data.length === limite &&
+      (!Number.isFinite(total) || numeroPagina * limite < total);
+    if (!temMais) break;
+    if (numeroPagina === maxPaginas) {
+      throw new Error('Consulta de clientes do Agile excedeu o limite de paginacao segura.');
+    }
+  }
+  if (encontrados.size !== 1) {
+    throw new Error('Cliente do totem (codigo 12678) com CPF configurado nao encontrado no Agile.');
+  }
+  customerCache = [...encontrados][0];
   return customerCache;
 }
 async function recentOrders(limit = 5) {
