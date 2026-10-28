@@ -1,0 +1,30 @@
+name: Validate Agile checkout receipt
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'electron/agile.js'
+      - 'electron/agile-print.js'
+      - 'electron/tests/**'
+      - '.github/workflows/test-auto-print.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JavaScript syntax validation
+        run: |
+          node --check electron/agile.js
+          node --check electron/agile-print.js
+          node --check electron/tests/agile-direct-print.test.js
+      - name: Run all virtual-Hern tests
+        run: npm run check
