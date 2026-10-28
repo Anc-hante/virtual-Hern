@@ -58,15 +58,18 @@ test('Agile diagnosis prefers pedidos for customer 12678 and keeps ERP optional'
       }
       if (target.includes('/integracao/clientes?')) {
         return { ok:true, status:200, json:async()=>({
-          data:[{ id:'01450747221', codigo:'12678', telefone:'SECRET-PII' }], meta:{total:1}
+          data:[
+            { id:'01450747221', codigo:'12678', cpf:'014.507.472-21', telefone:'SECRET-PII' },
+            { id:'44444444444', codigo:'12678', cpf:'444.444.444-44' }
+          ], meta:{total:2}
         }) };
       }
       if (target.includes('/integracao/pedidos?')) {
         return { ok:true, status:200, json:async()=>({
           data:[
-            { id:'1000018742', id_cliente:'01450747221', confirmado:true,
+            { id:'1000018742', id_cliente:'44444444444', confirmado:true,
               status:'recebido', valor_total:159.99, id_transacao:'1000018742', codigo:null },
-            { id:'1000018740', id_cliente:'01450747221', confirmado:true,
+            { id:'1000018740', id_cliente:'44444444444', confirmado:true,
               status:'cancelado', cancelado:true, valor_total:159.99 }
           ], meta:{total:2}
         }) };
@@ -90,7 +93,7 @@ test('Agile diagnosis prefers pedidos for customer 12678 and keeps ERP optional'
     assert.equal(requests[0].redirect, 'error');
     const pedidos = requests.find(r => /\/integracao\/pedidos\?/.test(r.url));
     assert.ok(pedidos);
-    assert.match(pedidos.url, /id_cliente=01450747221/);
+    assert.match(pedidos.url, /id_cliente=44444444444/);
     assert.match(pedidos.url, /sort=data/);
     assert.match(pedidos.url, /order=DESC/);
     assert.match(pedidos.url, /limit=5/);
