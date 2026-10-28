@@ -100,10 +100,10 @@ test('poll resolves 12678 once, caches the token, and loads items and payment by
       }
       if (target.includes('/integracao/clientes?')) {
         assert.match(target, /codigo=12678/);
-        return ok({ data: [fixture.customer], meta: { total: 1 } });
+        return ok({ data: [fixture.customer, { id: '44444444444', codigo: '12678', cpf: '444.444.444-44' }], meta: { total: 2 } });
       }
       if (target.includes('/integracao/pedidos?')) {
-        return ok({ data: fixture.orders, meta: { total: fixture.orders.length } });
+        return ok({ data: fixture.orders.map(row => ({ ...row, id_cliente: '44444444444' })), meta: { total: fixture.orders.length } });
       }
       if (target.includes('/integracao/pedidos_produtos?')) {
         return ok({ data: fixture.items, meta: { total: 1 } });
@@ -123,7 +123,7 @@ test('poll resolves 12678 once, caches the token, and loads items and payment by
     assert.equal(calls.filter(url => url.includes('/integracao/clientes?')).length, 1);
     assert.equal(calls.filter(url => url.includes('/integracao/pedidos?')).length, 2);
     const pedidosUrl = calls.find(url => url.includes('/integracao/pedidos?'));
-    assert.match(pedidosUrl, /id_cliente=01450747221/);
+    assert.match(pedidosUrl, /id_cliente=44444444444/);
     assert.match(pedidosUrl, /sort=data/);
     assert.match(pedidosUrl, /order=DESC/);
     assert.match(pedidosUrl, /limit=5/);
