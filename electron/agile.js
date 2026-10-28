@@ -285,13 +285,13 @@ async function customerIdForTotem() {
   customerCache = text(match.id);
   return customerCache;
 }
-async function recentOrders() {
+async function recentOrders(limit = 5) {
   const customerId = await customerIdForTotem();
   const page = await list('pedidos', {
     id_cliente: customerId,
     sort: 'data',
     order: 'DESC'
-  }, 1, 5);
+  }, 1, limit);
   return {
     orders: page.data
       .map(row => safeTotemOrder(row, 'pedidos', { customerId }))
